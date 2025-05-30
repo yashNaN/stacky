@@ -1156,7 +1156,7 @@ def cmd_stack_sync(stack: StackBranchSet, args):
     do_sync(get_current_stack_as_forest(stack))
 
 
-def do_commit(stack: StackBranchSet, *, message=None, amend=False, allow_empty=False, edit=True):
+def do_commit(stack: StackBranchSet, *, message=None, amend=False, allow_empty=False, edit=True, add_all=False):
     b = stack.stack[CURRENT_BRANCH]
     if not b.parent:
         die("Do not commit directly on {}", b.name)
@@ -1174,6 +1174,8 @@ def do_commit(stack: StackBranchSet, *, message=None, amend=False, allow_empty=F
         die("Branch {} has no commits, may not amend", b.name)
 
     cmd = ["git", "commit"]
+    if add_all:
+        cmd += ["-a"]
     if allow_empty:
         cmd += ["--allow-empty"]
     if amend:
@@ -1198,6 +1200,7 @@ def cmd_commit(stack: StackBranchSet, args):
         amend=args.amend,
         allow_empty=args.allow_empty,
         edit=not args.no_edit,
+        add_all=args.add_all,
     )
 
 
@@ -1697,6 +1700,7 @@ def main():
         commit_parser.add_argument("--amend", action="store_true", help="Amend last commit")
         commit_parser.add_argument("--allow-empty", action="store_true", help="Allow empty commit")
         commit_parser.add_argument("--no-edit", action="store_true", help="Skip editor")
+        commit_parser.add_argument("-a", action="store_true", help="Add all files to commit", dest="add_all")
         commit_parser.set_defaults(func=cmd_commit)
 
         # amend
