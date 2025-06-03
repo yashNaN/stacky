@@ -134,11 +134,19 @@ def get_config() -> StackyConfig:
 
 
 def read_config() -> StackyConfig:
-    root_dir = get_top_level_dir()
     config = StackyConfig()
-    config_paths = [f"{root_dir}/.stackyconfig", os.path.expanduser("~/.stackyconfig")]
+    config_paths = [os.path.expanduser("~/.stackyconfig")]
+    
+    try:
+        root_dir = get_top_level_dir()
+        config_paths.append(f"{root_dir}/.stackyconfig")
+    except Exception:
+        # Not in a git repository, skip the repo-level config
+        debug("Not in a git repository, skipping repo-level config")
+        pass
 
     for p in config_paths:
+        # Root dir config overwrites home directory config
         if os.path.exists(p):
             config.read_one_config(p)
 
