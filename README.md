@@ -38,7 +38,8 @@ Syntax is as follows:
     - `stacky branch up` (`stacky b u`): move down the stack (towards `master`)
     - `stacky branch down` (`stacky b d`): move down the stack (towards `master`)
     - `stacky branch new <name>`: create a new branch on top of the current one
-- `stacky commit [-m <message>] [--amend] [--allow-empty]`: wrapper around `git commit` that syncs everything upstack
+    - `stacky branch commit <name> [-m <message>] [-a]`: create a new branch and commit changes in one command
+- `stacky commit [-m <message>] [--amend] [--allow-empty] [-a]`: wrapper around `git commit` that syncs everything upstack
     - `stacky amend`: will amend currently tracked changes to top commit
 - Based on the first argument (`stack` vs `upstack` vs `downstack`), the following commands operate on the entire current stack, everything upstack from the current PR (inclusive), or everything downstack from the current PR:
     - `stacky stack info [--pr]`
