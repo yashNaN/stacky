@@ -763,6 +763,34 @@ def cmd_branch_new(stack: StackBranchSet, args):
     run(CmdArgs(["git", "update-ref", "refs/stack-parent/{}".format(name), b.commit, ""]))
 
 
+def cmd_branch_commit(stack: StackBranchSet, args):
+    """Create a new branch and commit all changes with the provided message"""
+    global CURRENT_BRANCH
+    
+    # First create the new branch (same logic as cmd_branch_new)
+    b = stack.stack[CURRENT_BRANCH]
+    assert b.commit
+    name = args.name
+    create_branch(name)
+    run(CmdArgs(["git", "update-ref", "refs/stack-parent/{}".format(name), b.commit, ""]))
+    
+    # Update global CURRENT_BRANCH since we just checked out the new branch
+    CURRENT_BRANCH = BranchName(name)
+    
+    # Reload the stack to include the new branch
+    load_stack_for_given_branch(stack, CURRENT_BRANCH)
+    
+    # Now commit all changes with the provided message (or open editor if no message)
+    do_commit(
+        stack,
+        message=args.message,
+        amend=False,
+        allow_empty=False,
+        edit=True,
+        add_all=args.add_all,
+    )
+
+
 def cmd_branch_checkout(stack: StackBranchSet, args):
     branch_name = args.name
     if branch_name is None:
@@ -1725,6 +1753,12 @@ def main():
         branch_new_parser = branch_subparsers.add_parser("new", aliases=["create"], help="Create a new branch")
         branch_new_parser.add_argument("name", help="Branch name")
         branch_new_parser.set_defaults(func=cmd_branch_new)
+
+        branch_commit_parser = branch_subparsers.add_parser("commit", help="Create a new branch and commit all changes")
+        branch_commit_parser.add_argument("name", help="Branch name")
+        branch_commit_parser.add_argument("-m", help="Commit message", dest="message")
+        branch_commit_parser.add_argument("-a", action="store_true", help="Add all files to commit", dest="add_all")
+        branch_commit_parser.set_defaults(func=cmd_branch_commit)
 
         branch_checkout_parser = branch_subparsers.add_parser("checkout", aliases=["co"], help="Checkout a branch")
         branch_checkout_parser.add_argument("name", help="Branch name", nargs="?")
