@@ -1688,6 +1688,157 @@ def cmd_land(stack: StackBranchSet, args):
     cout("\n✓ Success! Run `stacky update` to update local state.\n", fg="green")
 
 
+def cmd_inbox(stack: StackBranchSet, args):
+    """List all active GitHub pull requests for the current user"""
+    fields = [
+        "number",
+        "title", 
+        "headRefName",
+        "baseRefName",
+        "state",
+        "url",
+        "createdAt",
+        "updatedAt",
+        "author",
+        "reviewDecision",
+        "reviewRequests"
+    ]
+    
+    # Get all open PRs authored by the current user
+    my_prs_data = json.loads(
+        run_always_return(
+            CmdArgs(
+                [
+                    "gh",
+                    "pr",
+                    "list",
+                    "--json",
+                    ",".join(fields),
+                    "--state",
+                    "open",
+                    "--author",
+                    "@me"
+                ]
+            )
+        )
+    )
+    
+    # Get all open PRs where current user is requested as reviewer
+    review_prs_data = json.loads(
+        run_always_return(
+            CmdArgs(
+                [
+                    "gh",
+                    "pr",
+                    "list",
+                    "--json",
+                    ",".join(fields),
+                    "--state",
+                    "open",
+                    "--search",
+                    "review-requested:@me"
+                ]
+            )
+        )
+    )
+    
+    # Categorize my PRs based on review status
+    waiting_on_me = []
+    waiting_on_review = []
+    approved = []
+    
+    for pr in my_prs_data:
+        if pr["reviewDecision"] == "APPROVED":
+            approved.append(pr)
+        elif pr["reviewRequests"] and len(pr["reviewRequests"]) > 0:
+            waiting_on_review.append(pr)
+        else:
+            # No pending review requests, likely needs changes or author action
+            waiting_on_me.append(pr)
+    
+    # Sort all lists by updatedAt in descending order (most recent first)
+    waiting_on_me.sort(key=lambda pr: pr["updatedAt"], reverse=True)
+    waiting_on_review.sort(key=lambda pr: pr["updatedAt"], reverse=True)
+    approved.sort(key=lambda pr: pr["updatedAt"], reverse=True)
+    review_prs_data.sort(key=lambda pr: pr["updatedAt"], reverse=True)
+    
+    def display_pr_list(prs, color="white"):
+        for pr in prs:
+            if args.compact:
+                # Compact format with only PR number clickable: "#123 Title (branch) Updated: date"
+                # Create clickable link for just the PR number
+                pr_number_text = f"#{pr['number']}"
+                clickable_number = f"\033]8;;{pr['url']}\033\\\033[96m{pr_number_text}\033[0m\033]8;;\033\\"
+                cout("{} ", clickable_number)
+                cout("{} ", pr["title"], fg="white")
+                cout("({}) ", pr["headRefName"], fg="gray")
+                cout("Updated: {}\n", pr["updatedAt"][:10], fg="gray")
+            else:
+                # Full format with clickable PR number
+                pr_number_text = f"#{pr['number']}"
+                clickable_number = f"\033]8;;{pr['url']}\033\\\033[96m{pr_number_text}\033[0m\033]8;;\033\\"
+                cout("{} ", clickable_number)
+                cout("{}\n", pr["title"], fg=color)
+                cout("  {} -> {}\n", pr["headRefName"], pr["baseRefName"], fg="gray")
+                cout("  {}\n", pr["url"], fg="blue")
+                cout("  Updated: {}, Created: {}\n\n", pr["updatedAt"][:10], pr["createdAt"][:10], fg="gray")
+    
+    # Display categorized authored PRs
+    if waiting_on_me:
+        cout("Your PRs - Waiting on You:\n", fg="red")
+        display_pr_list(waiting_on_me, "white")
+        if args.compact:
+            cout("\n")
+        else:
+            cout("\n")
+    
+    if waiting_on_review:
+        cout("Your PRs - Waiting on Review:\n", fg="yellow")
+        display_pr_list(waiting_on_review, "white")
+        if args.compact:
+            cout("\n")
+        else:
+            cout("\n")
+    
+    if approved:
+        cout("Your PRs - Approved:\n", fg="green")
+        display_pr_list(approved, "white")
+        if args.compact:
+            cout("\n")
+        else:
+            cout("\n")
+    
+    if not my_prs_data:
+        cout("No active pull requests authored by you.\n", fg="green")
+    
+    # Display PRs waiting for review
+    if review_prs_data:
+        cout("Pull Requests Awaiting Your Review:\n", fg="yellow")
+        for pr in review_prs_data:
+            if args.compact:
+                # Compact format with only PR number clickable: "#123 Title (branch) Updated: date"
+                # Create clickable link for just the PR number
+                pr_number_text = f"#{pr['number']}"
+                clickable_number = f"\033]8;;{pr['url']}\033\\\033[96m{pr_number_text}\033[0m\033]8;;\033\\"
+                cout("{} ", clickable_number)
+                cout("{} ", pr["title"], fg="white")
+                cout("({}) ", pr["headRefName"], fg="gray")
+                cout("by {} ", pr["author"]["login"], fg="gray")
+                cout("Updated: {}\n", pr["updatedAt"][:10], fg="gray")
+            else:
+                # Full format with clickable PR number
+                pr_number_text = f"#{pr['number']}"
+                clickable_number = f"\033]8;;{pr['url']}\033\\\033[96m{pr_number_text}\033[0m\033]8;;\033\\"
+                cout("{} ", clickable_number)
+                cout("{}\n", pr["title"], fg="white")
+                cout("  {} -> {}\n", pr["headRefName"], pr["baseRefName"], fg="gray")
+                cout("  Author: {}\n", pr["author"]["login"], fg="gray")
+                cout("  {}\n", pr["url"], fg="blue")
+                cout("  Updated: {}, Created: {}\n\n", pr["updatedAt"][:10], pr["createdAt"][:10], fg="gray")
+    else:
+        cout("No pull requests awaiting your review.\n", fg="yellow")
+
+
 def main():
     logging.basicConfig(format=_LOGGING_FORMAT, level=logging.INFO)
     try:
@@ -1871,6 +2022,11 @@ def main():
 
         checkout_parser = subparsers.add_parser("sco", help="Checkout a branch in this stack")
         checkout_parser.set_defaults(func=cmd_stack_checkout)
+
+        # inbox
+        inbox_parser = subparsers.add_parser("inbox", help="List all active GitHub pull requests for the current user")
+        inbox_parser.add_argument("--compact", "-c", action="store_true", help="Show compact view")
+        inbox_parser.set_defaults(func=cmd_inbox)
 
         args = parser.parse_args()
         logging.basicConfig(format=_LOGGING_FORMAT, level=LOGLEVELS[args.log_level], force=True)
