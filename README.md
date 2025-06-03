@@ -33,10 +33,11 @@ Stacky doesn't use any git or Github APIs. It expects `git` and `gh` cli command
 ## Usage
 `stacky` stores all information locally, within your git repository
 Syntax is as follows:
-- `stacky info`: show all stacks , add `-pr` if you want to see GitHub PR numbers (slows things down a bit)
+- `stacky info`: show all stacks , add `-pr` if you want to see GitHub PR numbers (slows things down a bit)
+- `stacky inbox [--compact]`: show all active GitHub pull requests for the current user, organized by status (waiting on you, waiting on review, approved, and PRs awaiting your review). Use `--compact` or `-c` for a condensed one-line-per-PR view with clickable PR numbers.
 - `stacky branch`: per branch commands (shortcut: `stacky b`)
     - `stacky branch up` (`stacky b u`): move down the stack (towards `master`)
-    - `stacky branch down` (`stacky b d`): move down the stack (towards `master`)
+    - `stacky branch down` (`stacky b d`): move down the stack (towards `master`)
     - `stacky branch new <name>`: create a new branch on top of the current one
 - `stacky commit [-m <message>] [--amend] [--allow-empty]`: wrapper around `git commit` that syncs everything upstack
     - `stacky amend`: will amend currently tracked changes to top commit
@@ -56,12 +57,12 @@ The indicators (`*`, `~`, `!`) mean:
 ```
 $ stacky --help
 usage: stacky [-h] [--color {always,auto,never}]
-              {continue,info,commit,amend,branch,b,stack,s,upstack,us,downstack,ds,update,import,adopt,land,push,sync,checkout,co,sco} ...
+              {continue,info,commit,amend,branch,b,stack,s,upstack,us,downstack,ds,update,import,adopt,land,push,sync,checkout,co,sco,inbox} ...
 
 Handle git stacks
 
 positional arguments:
-  {continue,info,commit,amend,branch,b,stack,s,upstack,us,downstack,ds,update,import,adopt,land,push,sync,checkout,co,sco}
+  {continue,info,commit,amend,branch,b,stack,s,upstack,us,downstack,ds,update,import,adopt,land,push,sync,checkout,co,sco,inbox}
     continue            Continue previously interrupted command
     info                Stack info
     commit              Commit
@@ -71,12 +72,14 @@ positional arguments:
     upstack (us)        Operations on the current upstack
     downstack (ds)      Operations on the current downstack
     update              Update repo
+    import              Import Graphite stack
     adopt               Adopt one branch
     land                Land bottom-most PR on current stack
     push                Alias for downstack push
     sync                Alias for stack sync
     checkout (co)       Checkout a branch
     sco                 Checkout a branch in this stack
+    inbox               List all active GitHub pull requests for the current user
 
 optional arguments:
   -h, --help            show this help message and exit
