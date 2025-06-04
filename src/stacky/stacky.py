@@ -1812,8 +1812,6 @@ def cmd_inbox(stack: StackBranchSet, args):
                 cout("{} ", pr["title"], fg="white")
                 cout("({}) ", pr["headRefName"], fg="gray")
                 cout("by {} ", pr["author"]["login"], fg="gray")
-                if check_text:
-                    cout("{} ", check_text, fg=check_color)
                 cout("Updated: {}\n", pr["updatedAt"][:10], fg="gray")
             else:
                 # Full format with clickable PR number
@@ -1832,10 +1830,7 @@ def cmd_inbox(stack: StackBranchSet, args):
     if waiting_on_me:
         cout("Your PRs - Waiting on You:\n", fg="red")
         display_pr_list(waiting_on_me, "white")
-        if args.compact:
-            cout("\n")
-        else:
-            cout("\n")
+        cout("\n")
     
     if waiting_on_review:
         cout("Your PRs - Waiting on Review:\n", fg="yellow")
@@ -1848,10 +1843,7 @@ def cmd_inbox(stack: StackBranchSet, args):
     if approved:
         cout("Your PRs - Approved:\n", fg="green")
         display_pr_list(approved, "white")
-        if args.compact:
-            cout("\n")
-        else:
-            cout("\n")
+        cout("\n")
     
     if not my_prs_data:
         cout("No active pull requests authored by you.\n", fg="green")
@@ -1871,8 +1863,6 @@ def cmd_inbox(stack: StackBranchSet, args):
                 cout("{} ", pr["title"], fg="white")
                 cout("({}) ", pr["headRefName"], fg="gray")
                 cout("by {} ", pr["author"]["login"], fg="gray")
-                if check_text:
-                    cout("{} ", check_text, fg=check_color)
                 cout("Updated: {}\n", pr["updatedAt"][:10], fg="gray")
             else:
                 # Full format with clickable PR number
