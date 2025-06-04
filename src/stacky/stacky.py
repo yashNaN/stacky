@@ -1142,8 +1142,11 @@ def get_commits_between(a: Commit, b: Commit):
     assert lines is not None
     return [x.strip() for x in lines.split("\n")]
 
-def get_commits_between_branches(a: BranchName, b: BranchName):
-    lines = run_multiline(CmdArgs(["git", "log", "{}..{}".format(a, b), "--pretty=format:%H"]))
+def get_commits_between_branches(a: BranchName, b: BranchName, *, no_merges: bool = False):
+    cmd = ["git", "log", "{}..{}".format(a, b), "--pretty=format:%H"]
+    if no_merges:
+        cmd.append("--no-merges")
+    lines = run_multiline(CmdArgs(cmd))
     assert lines is not None
     return [x.strip() for x in lines.split("\n")]
 
@@ -2108,10 +2111,33 @@ def main():
             if CURRENT_BRANCH not in stack.stack:
                 die("Current branch {} is not in a stack", CURRENT_BRANCH)
 
-            sync_names = state["sync"]
-            syncs = [stack.stack[n] for n in sync_names]
-
-            inner_do_sync(syncs, sync_names)
+            if "sync" in state:
+                # Continue sync operation
+                sync_names = state["sync"]
+                syncs = [stack.stack[n] for n in sync_names]
+                inner_do_sync(syncs, sync_names)
+            elif "fold" in state:
+                # Continue fold operation
+                fold_state = state["fold"]
+                inner_do_fold(
+                    stack,
+                    fold_state["fold_branch"],
+                    fold_state["parent_branch"],
+                    fold_state["commits"],
+                    fold_state["children"],
+                    fold_state["allow_empty"]
+                )
+            elif "merge_fold" in state:
+                # Continue merge-based fold operation
+                merge_fold_state = state["merge_fold"]
+                finish_merge_fold_operation(
+                    stack,
+                    merge_fold_state["fold_branch"],
+                    merge_fold_state["parent_branch"],
+                    merge_fold_state["children"]
+                )
+            else:
+                die("Unknown operation in progress")
         else:
             # TODO restore the current branch after changing the branch on some commands for
             # instance `info`
@@ -2160,7 +2186,7 @@ def cmd_fold(stack: StackBranchSet, args):
         )
     
     # Get commits to be applied
-    commits_to_apply = get_commits_between_branches(b.parent_commit, b.commit)
+    commits_to_apply = get_commits_between_branches(b.parent.name, b.name, no_merges=True)
     if not commits_to_apply:
         info("No commits to fold from {} into {}", b.name, b.parent.name)
     else:
@@ -2177,49 +2203,172 @@ def cmd_fold(stack: StackBranchSet, args):
     checkout(b.parent.name)
     CURRENT_BRANCH = b.parent.name
     
-    for commit in commits_to_apply:
-        cout("Cherry-picking commit {}\n", commit[:8], fg="green")
+    # Choose between merge and cherry-pick based on config
+    if get_config().use_merge:
+        # Merge approach: merge the child branch into parent
+        inner_do_merge_fold(stack, b.name, b.parent.name, [child.name for child in children])
+    else:
+        # Cherry-pick approach: apply individual commits
+        if commits_to_apply:
+            # Reverse the list since get_commits_between_branches returns newest first
+            commits_to_apply = list(reversed(commits_to_apply))
+            # Use inner_do_fold for state management
+            inner_do_fold(stack, b.name, b.parent.name, commits_to_apply, [child.name for child in children], args.allow_empty)
+        else:
+            # No commits to apply, just finish the fold operation
+            finish_fold_operation(stack, b.name, b.parent.name, [child.name for child in children])
+    
+    return  # Early return since both paths handle completion
 
-    # Apply commits from the branch being folded
-    if commits_to_apply:
-        # Reverse the list since get_commits_between_branches returns newest first
-        for commit in reversed(commits_to_apply):
-            cout("Cherry-picking commit {}\n", commit[:8], fg="green")
-            cherry_pick_cmd = ["git", "cherry-pick"]
-            if args.allow_empty:
-                cherry_pick_cmd.append("--allow-empty")
-            cherry_pick_cmd.append(commit)
-            result = run(CmdArgs(cherry_pick_cmd), check=False)
-            if result is None:
-                die("Cherry-pick failed for commit {}. Please resolve conflicts and run `stacky continue`", commit)
+
+def inner_do_merge_fold(stack: StackBranchSet, fold_branch_name: BranchName, parent_branch_name: BranchName, 
+                        children_names: List[BranchName]):
+    """Perform merge-based fold operation with state management"""
+    print()
+    
+    # Save state for potential continuation
+    with open(TMP_STATE_FILE, "w") as f:
+        json.dump({
+            "branch": CURRENT_BRANCH,
+            "merge_fold": {
+                "fold_branch": fold_branch_name,
+                "parent_branch": parent_branch_name,
+                "children": children_names,
+            }
+        }, f)
+    os.replace(TMP_STATE_FILE, STATE_FILE)  # make the write atomic
+    
+    cout("Merging {} into {}\n", fold_branch_name, parent_branch_name, fg="green")
+    result = run(CmdArgs(["git", "merge", fold_branch_name]), check=False)
+    if result is None:
+        die("Merge failed for branch {}. Please resolve conflicts and run `stacky continue`", fold_branch_name)
+    
+    # Merge successful, complete the fold operation
+    finish_merge_fold_operation(stack, fold_branch_name, parent_branch_name, children_names)
+
+
+def finish_merge_fold_operation(stack: StackBranchSet, fold_branch_name: BranchName, 
+                                parent_branch_name: BranchName, children_names: List[BranchName]):
+    """Complete the merge-based fold operation after merge is successful"""
+    global CURRENT_BRANCH
+    
+    # Get the updated branches from the stack
+    fold_branch = stack.stack.get(fold_branch_name)
+    parent_branch = stack.stack[parent_branch_name]
+    
+    if not fold_branch:
+        # Branch might have been deleted already, just finish up
+        cout("✓ Merge fold operation completed\n", fg="green")
+        return
     
     # Update parent branch commit in stack
-    b.parent.commit = get_commit(b.parent.name)
+    parent_branch.commit = get_commit(parent_branch_name)
     
     # Reparent children
-    for child in children:
-        info("Reparenting {} from {} to {}", child.name, b.name, b.parent.name)
-        child.parent = b.parent
-        b.parent.children.add(child)
-        set_parent(child.name, b.parent.name)
-        # Update the child's parent commit to the new parent's tip
-        set_parent_commit(child.name, b.parent.commit, child.parent_commit)
-        child.parent_commit = b.parent.commit
+    for child_name in children_names:
+        if child_name in stack.stack:
+            child = stack.stack[child_name]
+            info("Reparenting {} from {} to {}", child.name, fold_branch.name, parent_branch.name)
+            child.parent = parent_branch
+            parent_branch.children.add(child)
+            fold_branch.children.discard(child)
+            set_parent(child.name, parent_branch.name)
+            # Update the child's parent commit to the new parent's tip
+            set_parent_commit(child.name, parent_branch.commit, child.parent_commit)
+            child.parent_commit = parent_branch.commit
     
     # Remove the folded branch from its parent's children
-    b.parent.children.discard(b)
+    parent_branch.children.discard(fold_branch)
     
     # Delete the branch
-    info("Deleting branch {}", b.name)
-    run(CmdArgs(["git", "branch", "-D", b.name]))
+    info("Deleting branch {}", fold_branch.name)
+    run(CmdArgs(["git", "branch", "-D", fold_branch.name]))
     
     # Clean up stack parent ref
-    run(CmdArgs(["git", "update-ref", "-d", "refs/stack-parent/{}".format(b.name)]))
+    run(CmdArgs(["git", "update-ref", "-d", "refs/stack-parent/{}".format(fold_branch.name)]))
     
     # Remove from stack
-    stack.remove(b.name)
+    stack.remove(fold_branch.name)
     
-    cout("✓ Successfully folded {} into {}\n", b.name, b.parent.name, fg="green")
+    cout("✓ Successfully merged and folded {} into {}\n", fold_branch.name, parent_branch.name, fg="green")
+
+
+def inner_do_fold(stack: StackBranchSet, fold_branch_name: BranchName, parent_branch_name: BranchName, 
+                  commits_to_apply: List[str], children_names: List[BranchName], allow_empty: bool):
+    """Continue folding operation from saved state"""
+    print()
+    while commits_to_apply:
+        with open(TMP_STATE_FILE, "w") as f:
+            json.dump({
+                "branch": CURRENT_BRANCH,
+                "fold": {
+                    "fold_branch": fold_branch_name,
+                    "parent_branch": parent_branch_name,
+                    "commits": commits_to_apply,
+                    "children": children_names,
+                    "allow_empty": allow_empty
+                }
+            }, f)
+        os.replace(TMP_STATE_FILE, STATE_FILE)  # make the write atomic
+
+        commit = commits_to_apply.pop()
+        cout("Cherry-picking commit {}\n", commit[:8], fg="green")
+        cherry_pick_cmd = ["git", "cherry-pick"]
+        if allow_empty:
+            cherry_pick_cmd.append("--allow-empty")
+        cherry_pick_cmd.append(commit)
+        result = run(CmdArgs(cherry_pick_cmd), check=False)
+        if result is None:
+            die("Cherry-pick failed for commit {}. Please resolve conflicts and run `stacky continue`", commit)
+    
+    # All commits applied successfully, now finish the fold operation
+    finish_fold_operation(stack, fold_branch_name, parent_branch_name, children_names)
+
+
+def finish_fold_operation(stack: StackBranchSet, fold_branch_name: BranchName, 
+                         parent_branch_name: BranchName, children_names: List[BranchName]):
+    """Complete the fold operation after all commits are applied"""
+    global CURRENT_BRANCH
+    
+    # Get the updated branches from the stack
+    fold_branch = stack.stack.get(fold_branch_name)
+    parent_branch = stack.stack[parent_branch_name]
+    
+    if not fold_branch:
+        # Branch might have been deleted already, just finish up
+        cout("✓ Fold operation completed\n", fg="green")
+        return
+    
+    # Update parent branch commit in stack
+    parent_branch.commit = get_commit(parent_branch_name)
+    
+    # Reparent children
+    for child_name in children_names:
+        if child_name in stack.stack:
+            child = stack.stack[child_name]
+            info("Reparenting {} from {} to {}", child.name, fold_branch.name, parent_branch.name)
+            child.parent = parent_branch
+            parent_branch.children.add(child)
+            fold_branch.children.discard(child)
+            set_parent(child.name, parent_branch.name)
+            # Update the child's parent commit to the new parent's tip
+            set_parent_commit(child.name, parent_branch.commit, child.parent_commit)
+            child.parent_commit = parent_branch.commit
+    
+    # Remove the folded branch from its parent's children
+    parent_branch.children.discard(fold_branch)
+    
+    # Delete the branch
+    info("Deleting branch {}", fold_branch.name)
+    run(CmdArgs(["git", "branch", "-D", fold_branch.name]))
+    
+    # Clean up stack parent ref
+    run(CmdArgs(["git", "update-ref", "-d", "refs/stack-parent/{}".format(fold_branch.name)]))
+    
+    # Remove from stack
+    stack.remove(fold_branch.name)
+    
+    cout("✓ Successfully folded {} into {}\n", fold_branch.name, parent_branch.name, fg="green")
 
 
 if __name__ == "__main__":
