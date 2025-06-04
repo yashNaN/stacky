@@ -42,7 +42,8 @@ Syntax is as follows:
     - `stacky branch commit <name> [-m <message>] [-a]`: create a new branch and commit changes in one command
 - `stacky commit [-m <message>] [--amend] [--allow-empty] [-a]`: wrapper around `git commit` that syncs everything upstack
     - `stacky amend`: will amend currently tracked changes to top commit
-- Based on the first argument (`stack` vs `upstack` vs `downstack`), the following commands operate on the entire current stack, everything upstack from the current PR (inclusive), or everything downstack from the current PR:
+- `stacky fold [--allow-empty]`: fold current branch into its parent branch and delete the current branch. Any children of the current branch become children of the parent branch. Uses cherry-pick by default, or merge if `use_merge` is enabled in config. Use `--allow-empty` to allow empty commits during cherry-pick.
+- Based on the first argument (`stack` vs `upstack` vs `downstack`), the following commands operate on the entire current stack, everything upstack from the current PR (inclusive), or everything downstack from the current PR:
     - `stacky stack info [--pr]`
     - `stacky stack sync`: sync (rebase) branches in the stack on top of their parents
     - `stacky stack push [--no-pr]`: push to origin, optionally not creating PRs if they don’t exist
@@ -58,12 +59,12 @@ The indicators (`*`, `~`, `!`) mean:
 ```
 $ stacky --help
 usage: stacky [-h] [--color {always,auto,never}]
-              {continue,info,commit,amend,branch,b,stack,s,upstack,us,downstack,ds,update,import,adopt,land,push,sync,checkout,co,sco,inbox} ...
+              {continue,info,commit,amend,branch,b,stack,s,upstack,us,downstack,ds,update,import,adopt,land,push,sync,checkout,co,sco,inbox,fold} ...
 
 Handle git stacks
 
 positional arguments:
-  {continue,info,commit,amend,branch,b,stack,s,upstack,us,downstack,ds,update,import,adopt,land,push,sync,checkout,co,sco,inbox}
+  {continue,info,commit,amend,branch,b,stack,s,upstack,us,downstack,ds,update,import,adopt,land,push,sync,checkout,co,sco,inbox,fold}
     continue            Continue previously interrupted command
     info                Stack info
     commit              Commit
@@ -81,6 +82,7 @@ positional arguments:
     checkout (co)       Checkout a branch
     sco                 Checkout a branch in this stack
     inbox               List all active GitHub pull requests for the current user
+    fold                Fold current branch into parent branch and delete current branch
 
 optional arguments:
   -h, --help            show this help message and exit
@@ -170,6 +172,7 @@ In the file you have sections and each sections define some parameters.
 
 We currently have the following sections:
  * UI
+ * GIT
 
 List of parameters for each sections:
 
@@ -178,6 +181,10 @@ List of parameters for each sections:
  * change_to_main: boolean with a default value of `False`, by default `stacky` will stop doing action is you are not in a valid stack (ie. a branch that was created or adopted by stacky), when set to `True` `stacky` will first change to `main` or `master` *when* the current branch is not a valid stack.
  * change_to_adopted: boolean with a default value of `False`, when set to `True` `stacky` will change the current branch to the adopted one.
  * share_ssh_session: boolean with a default value of `False`, when set to `True` `stacky` will create a shared `ssh` session to the `github.com` server. This is useful when you are pushing a stack of diff and you have some kind of 2FA on your ssh key like the ed25519-sk.
+
+### GIT
+ * use_merge: boolean with a default value of `False`, when set to `True` `stacky` will use `git merge` instead of `git rebase` for sync operations and `stacky fold` will merge the child branch into the parent instead of cherry-picking individual commits.
+ * use_force_push: boolean with a default value of `True`, controls whether `stacky` can use force push when pushing branches.
 
 ## License
 
