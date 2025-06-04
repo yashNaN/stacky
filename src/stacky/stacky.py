@@ -1142,6 +1142,10 @@ def get_commits_between(a: Commit, b: Commit):
     assert lines is not None
     return [x.strip() for x in lines.split("\n")]
 
+def get_commits_between_branches(a: BranchName, b: BranchName):
+    lines = run_multiline(CmdArgs(["git", "log", "{}..{}".format(a, b), "--pretty=format:%H"]))
+    assert lines is not None
+    return [x.strip() for x in lines.split("\n")]
 
 def inner_do_sync(syncs: List[StackBranch], sync_names: List[BranchName]):
     print()
@@ -2069,6 +2073,11 @@ def main():
         inbox_parser.add_argument("--compact", "-c", action="store_true", help="Show compact view")
         inbox_parser.set_defaults(func=cmd_inbox)
 
+        # fold
+        fold_parser = subparsers.add_parser("fold", help="Fold current branch into parent branch and delete current branch")
+        fold_parser.add_argument("--allow-empty", action="store_true", help="Allow empty commits during cherry-pick")
+        fold_parser.set_defaults(func=cmd_fold)
+
         args = parser.parse_args()
         logging.basicConfig(format=_LOGGING_FORMAT, level=LOGLEVELS[args.log_level], force=True)
 
@@ -2126,6 +2135,91 @@ def main():
     except ExitException as e:
         error("{}", e.args[0])
         sys.exit(1)
+
+
+def cmd_fold(stack: StackBranchSet, args):
+    """Fold current branch into parent branch and delete current branch"""
+    global CURRENT_BRANCH
+    
+    if CURRENT_BRANCH not in stack.stack:
+        die("Current branch {} is not in a stack", CURRENT_BRANCH)
+    
+    b = stack.stack[CURRENT_BRANCH]
+    
+    if not b.parent:
+        die("Cannot fold stack bottom branch {}", CURRENT_BRANCH)
+    
+    if b.parent.name in STACK_BOTTOMS:
+        die("Cannot fold into stack bottom branch {}", b.parent.name)
+    
+    if not b.is_synced_with_parent():
+        die(
+            "Branch {} is not synced with parent {}, sync before folding",
+            b.name,
+            b.parent.name,
+        )
+    
+    # Get commits to be applied
+    commits_to_apply = get_commits_between_branches(b.parent_commit, b.commit)
+    if not commits_to_apply:
+        info("No commits to fold from {} into {}", b.name, b.parent.name)
+    else:
+        cout("Folding {} commits from {} into {}\n", len(commits_to_apply), b.name, b.parent.name, fg="green")
+    
+    # Get children that need to be reparented
+    children = list(b.children)
+    if children:
+        cout("Reparenting {} children to {}\n", len(children), b.parent.name, fg="yellow")
+        for child in children:
+            cout("  {} -> {}\n", child.name, b.parent.name, fg="gray")
+    
+    # Switch to parent branch
+    checkout(b.parent.name)
+    CURRENT_BRANCH = b.parent.name
+    
+    for commit in commits_to_apply:
+        cout("Cherry-picking commit {}\n", commit[:8], fg="green")
+
+    # Apply commits from the branch being folded
+    if commits_to_apply:
+        # Reverse the list since get_commits_between_branches returns newest first
+        for commit in reversed(commits_to_apply):
+            cout("Cherry-picking commit {}\n", commit[:8], fg="green")
+            cherry_pick_cmd = ["git", "cherry-pick"]
+            if args.allow_empty:
+                cherry_pick_cmd.append("--allow-empty")
+            cherry_pick_cmd.append(commit)
+            result = run(CmdArgs(cherry_pick_cmd), check=False)
+            if result is None:
+                die("Cherry-pick failed for commit {}. Please resolve conflicts and run `stacky continue`", commit)
+    
+    # Update parent branch commit in stack
+    b.parent.commit = get_commit(b.parent.name)
+    
+    # Reparent children
+    for child in children:
+        info("Reparenting {} from {} to {}", child.name, b.name, b.parent.name)
+        child.parent = b.parent
+        b.parent.children.add(child)
+        set_parent(child.name, b.parent.name)
+        # Update the child's parent commit to the new parent's tip
+        set_parent_commit(child.name, b.parent.commit, child.parent_commit)
+        child.parent_commit = b.parent.commit
+    
+    # Remove the folded branch from its parent's children
+    b.parent.children.discard(b)
+    
+    # Delete the branch
+    info("Deleting branch {}", b.name)
+    run(CmdArgs(["git", "branch", "-D", b.name]))
+    
+    # Clean up stack parent ref
+    run(CmdArgs(["git", "update-ref", "-d", "refs/stack-parent/{}".format(b.name)]))
+    
+    # Remove from stack
+    stack.remove(b.name)
+    
+    cout("✓ Successfully folded {} into {}\n", b.name, b.parent.name, fg="green")
 
 
 if __name__ == "__main__":
