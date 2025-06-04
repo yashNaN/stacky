@@ -1709,7 +1709,10 @@ def cmd_inbox(stack: StackBranchSet, args):
         "updatedAt",
         "author",
         "reviewDecision",
-        "reviewRequests"
+        "reviewRequests",
+        "mergeable",
+        "mergeStateStatus",
+        "statusCheckRollup"
     ]
     
     # Get all open PRs authored by the current user
@@ -1770,8 +1773,36 @@ def cmd_inbox(stack: StackBranchSet, args):
     approved.sort(key=lambda pr: pr["updatedAt"], reverse=True)
     review_prs_data.sort(key=lambda pr: pr["updatedAt"], reverse=True)
     
+    def get_check_status(pr):
+        """Get a summary of merge check status"""
+        if not pr.get("statusCheckRollup") or len(pr.get("statusCheckRollup")) == 0:
+            return "", "gray"
+        
+        rollup = pr["statusCheckRollup"]
+        
+        # statusCheckRollup is a list of checks, determine overall state
+        states = []
+        for check in rollup:
+            if isinstance(check, dict) and "state" in check:
+                states.append(check["state"])
+        
+        if not states:
+            return "", "gray"
+        
+        # Determine overall status based on individual check states
+        if "FAILURE" in states or "ERROR" in states:
+            return "✗ Checks failed", "red"
+        elif "PENDING" in states or "QUEUED" in states:
+            return "⏳ Checks running", "yellow"
+        elif all(state == "SUCCESS" for state in states):
+            return "✓ Checks passed", "green"
+        else:
+            return f"Checks mixed", "yellow"
+    
     def display_pr_list(prs, color="white"):
         for pr in prs:
+            check_text, check_color = get_check_status(pr)
+            
             if args.compact:
                 # Compact format with only PR number clickable: "#123 Title (branch) Updated: date"
                 # Create clickable link for just the PR number
@@ -1780,6 +1811,7 @@ def cmd_inbox(stack: StackBranchSet, args):
                 cout("{} ", clickable_number)
                 cout("{} ", pr["title"], fg="white")
                 cout("({}) ", pr["headRefName"], fg="gray")
+                cout("by {} ", pr["author"]["login"], fg="gray")
                 cout("Updated: {}\n", pr["updatedAt"][:10], fg="gray")
             else:
                 # Full format with clickable PR number
@@ -1788,6 +1820,9 @@ def cmd_inbox(stack: StackBranchSet, args):
                 cout("{} ", clickable_number)
                 cout("{}\n", pr["title"], fg=color)
                 cout("  {} -> {}\n", pr["headRefName"], pr["baseRefName"], fg="gray")
+                cout("  Author: {}\n", pr["author"]["login"], fg="gray")
+                if check_text:
+                    cout("  {}\n", check_text, fg=check_color)
                 cout("  {}\n", pr["url"], fg="blue")
                 cout("  Updated: {}, Created: {}\n\n", pr["updatedAt"][:10], pr["createdAt"][:10], fg="gray")
     
@@ -1795,10 +1830,7 @@ def cmd_inbox(stack: StackBranchSet, args):
     if waiting_on_me:
         cout("Your PRs - Waiting on You:\n", fg="red")
         display_pr_list(waiting_on_me, "white")
-        if args.compact:
-            cout("\n")
-        else:
-            cout("\n")
+        cout("\n")
     
     if waiting_on_review:
         cout("Your PRs - Waiting on Review:\n", fg="yellow")
@@ -1811,10 +1843,7 @@ def cmd_inbox(stack: StackBranchSet, args):
     if approved:
         cout("Your PRs - Approved:\n", fg="green")
         display_pr_list(approved, "white")
-        if args.compact:
-            cout("\n")
-        else:
-            cout("\n")
+        cout("\n")
     
     if not my_prs_data:
         cout("No active pull requests authored by you.\n", fg="green")
@@ -1823,6 +1852,8 @@ def cmd_inbox(stack: StackBranchSet, args):
     if review_prs_data:
         cout("Pull Requests Awaiting Your Review:\n", fg="yellow")
         for pr in review_prs_data:
+            check_text, check_color = get_check_status(pr)
+            
             if args.compact:
                 # Compact format with only PR number clickable: "#123 Title (branch) Updated: date"
                 # Create clickable link for just the PR number
@@ -1841,6 +1872,8 @@ def cmd_inbox(stack: StackBranchSet, args):
                 cout("{}\n", pr["title"], fg="white")
                 cout("  {} -> {}\n", pr["headRefName"], pr["baseRefName"], fg="gray")
                 cout("  Author: {}\n", pr["author"]["login"], fg="gray")
+                if check_text:
+                    cout("  {}\n", check_text, fg=check_color)
                 cout("  {}\n", pr["url"], fg="blue")
                 cout("  Updated: {}, Created: {}\n\n", pr["updatedAt"][:10], pr["createdAt"][:10], fg="gray")
     else:
