@@ -1776,7 +1776,7 @@ def cmd_inbox(stack: StackBranchSet, args):
     def get_check_status(pr):
         """Get a summary of merge check status"""
         if not pr.get("statusCheckRollup") or len(pr.get("statusCheckRollup")) == 0:
-            return "No checks", "gray"
+            return "", "gray"
         
         rollup = pr["statusCheckRollup"]
         
@@ -1787,7 +1787,7 @@ def cmd_inbox(stack: StackBranchSet, args):
                 states.append(check["state"])
         
         if not states:
-            return "No checks", "gray"
+            return "", "gray"
         
         # Determine overall status based on individual check states
         if "FAILURE" in states or "ERROR" in states:
@@ -1811,7 +1811,9 @@ def cmd_inbox(stack: StackBranchSet, args):
                 cout("{} ", clickable_number)
                 cout("{} ", pr["title"], fg="white")
                 cout("({}) ", pr["headRefName"], fg="gray")
-                cout("{} ", check_text, fg=check_color)
+                cout("by {} ", pr["author"]["login"], fg="gray")
+                if check_text:
+                    cout("{} ", check_text, fg=check_color)
                 cout("Updated: {}\n", pr["updatedAt"][:10], fg="gray")
             else:
                 # Full format with clickable PR number
@@ -1820,7 +1822,9 @@ def cmd_inbox(stack: StackBranchSet, args):
                 cout("{} ", clickable_number)
                 cout("{}\n", pr["title"], fg=color)
                 cout("  {} -> {}\n", pr["headRefName"], pr["baseRefName"], fg="gray")
-                cout("  {}\n", check_text, fg=check_color)
+                cout("  Author: {}\n", pr["author"]["login"], fg="gray")
+                if check_text:
+                    cout("  {}\n", check_text, fg=check_color)
                 cout("  {}\n", pr["url"], fg="blue")
                 cout("  Updated: {}, Created: {}\n\n", pr["updatedAt"][:10], pr["createdAt"][:10], fg="gray")
     
@@ -1867,7 +1871,8 @@ def cmd_inbox(stack: StackBranchSet, args):
                 cout("{} ", pr["title"], fg="white")
                 cout("({}) ", pr["headRefName"], fg="gray")
                 cout("by {} ", pr["author"]["login"], fg="gray")
-                cout("{} ", check_text, fg=check_color)
+                if check_text:
+                    cout("{} ", check_text, fg=check_color)
                 cout("Updated: {}\n", pr["updatedAt"][:10], fg="gray")
             else:
                 # Full format with clickable PR number
@@ -1877,7 +1882,8 @@ def cmd_inbox(stack: StackBranchSet, args):
                 cout("{}\n", pr["title"], fg="white")
                 cout("  {} -> {}\n", pr["headRefName"], pr["baseRefName"], fg="gray")
                 cout("  Author: {}\n", pr["author"]["login"], fg="gray")
-                cout("  {}\n", check_text, fg=check_color)
+                if check_text:
+                    cout("  {}\n", check_text, fg=check_color)
                 cout("  {}\n", pr["url"], fg="blue")
                 cout("  Updated: {}, Created: {}\n\n", pr["updatedAt"][:10], pr["createdAt"][:10], fg="gray")
     else:
