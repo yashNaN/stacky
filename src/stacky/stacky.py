@@ -1799,50 +1799,67 @@ def cmd_inbox(stack: StackBranchSet, args):
         else:
             return f"Checks mixed", "yellow"
     
-    def display_pr_list(prs, color="white"):
+    def display_pr_compact(pr, show_author=False):
+        """Display a single PR in compact format"""
+        check_text, check_color = get_check_status(pr)
+        
+        # Create clickable link for PR number
+        pr_number_text = f"#{pr['number']}"
+        clickable_number = f"\033]8;;{pr['url']}\033\\\033[96m{pr_number_text}\033[0m\033]8;;\033\\"
+        cout("{} ", clickable_number)
+        cout("{} ", pr["title"], fg="white")
+        cout("({}) ", pr["headRefName"], fg="gray")
+        
+        if show_author:
+            cout("by {} ", pr["author"]["login"], fg="gray")
+        
+        if check_text:
+            cout("{} ", check_text, fg=check_color)
+        
+        cout("Updated: {}\n", pr["updatedAt"][:10], fg="gray")
+    
+    def display_pr_full(pr, show_author=False):
+        """Display a single PR in full format"""
+        check_text, check_color = get_check_status(pr)
+        
+        # Create clickable link for PR number
+        pr_number_text = f"#{pr['number']}"
+        clickable_number = f"\033]8;;{pr['url']}\033\\\033[96m{pr_number_text}\033[0m\033]8;;\033\\"
+        cout("{} ", clickable_number)
+        cout("{}\n", pr["title"], fg="white")
+        cout("  {} -> {}\n", pr["headRefName"], pr["baseRefName"], fg="gray")
+        
+        if show_author:
+            cout("  Author: {}\n", pr["author"]["login"], fg="gray")
+        
+        if check_text:
+            cout("  {}\n", check_text, fg=check_color)
+        
+        cout("  {}\n", pr["url"], fg="blue")
+        cout("  Updated: {}, Created: {}\n\n", pr["updatedAt"][:10], pr["createdAt"][:10], fg="gray")
+    
+    def display_pr_list(prs, show_author=False):
+        """Display a list of PRs in the chosen format"""
         for pr in prs:
-            check_text, check_color = get_check_status(pr)
-            
             if args.compact:
-                # Compact format with only PR number clickable: "#123 Title (branch) Updated: date"
-                # Create clickable link for just the PR number
-                pr_number_text = f"#{pr['number']}"
-                clickable_number = f"\033]8;;{pr['url']}\033\\\033[96m{pr_number_text}\033[0m\033]8;;\033\\"
-                cout("{} ", clickable_number)
-                cout("{} ", pr["title"], fg="white")
-                cout("({}) ", pr["headRefName"], fg="gray")
-                cout("by {} ", pr["author"]["login"], fg="gray")
-                cout("Updated: {}\n", pr["updatedAt"][:10], fg="gray")
+                display_pr_compact(pr, show_author)
             else:
-                # Full format with clickable PR number
-                pr_number_text = f"#{pr['number']}"
-                clickable_number = f"\033]8;;{pr['url']}\033\\\033[96m{pr_number_text}\033[0m\033]8;;\033\\"
-                cout("{} ", clickable_number)
-                cout("{}\n", pr["title"], fg=color)
-                cout("  {} -> {}\n", pr["headRefName"], pr["baseRefName"], fg="gray")
-                cout("  Author: {}\n", pr["author"]["login"], fg="gray")
-                if check_text:
-                    cout("  {}\n", check_text, fg=check_color)
-                cout("  {}\n", pr["url"], fg="blue")
-                cout("  Updated: {}, Created: {}\n\n", pr["updatedAt"][:10], pr["createdAt"][:10], fg="gray")
+                display_pr_full(pr, show_author)
     
     # Display categorized authored PRs
     if waiting_on_me:
         cout("Your PRs - Waiting on You:\n", fg="red")
-        display_pr_list(waiting_on_me, "white")
+        display_pr_list(waiting_on_me)
         cout("\n")
     
     if waiting_on_review:
         cout("Your PRs - Waiting on Review:\n", fg="yellow")
-        display_pr_list(waiting_on_review, "white")
-        if args.compact:
-            cout("\n")
-        else:
-            cout("\n")
+        display_pr_list(waiting_on_review)
+        cout("\n")
     
     if approved:
         cout("Your PRs - Approved:\n", fg="green")
-        display_pr_list(approved, "white")
+        display_pr_list(approved)
         cout("\n")
     
     if not my_prs_data:
@@ -1851,31 +1868,7 @@ def cmd_inbox(stack: StackBranchSet, args):
     # Display PRs waiting for review
     if review_prs_data:
         cout("Pull Requests Awaiting Your Review:\n", fg="yellow")
-        for pr in review_prs_data:
-            check_text, check_color = get_check_status(pr)
-            
-            if args.compact:
-                # Compact format with only PR number clickable: "#123 Title (branch) Updated: date"
-                # Create clickable link for just the PR number
-                pr_number_text = f"#{pr['number']}"
-                clickable_number = f"\033]8;;{pr['url']}\033\\\033[96m{pr_number_text}\033[0m\033]8;;\033\\"
-                cout("{} ", clickable_number)
-                cout("{} ", pr["title"], fg="white")
-                cout("({}) ", pr["headRefName"], fg="gray")
-                cout("by {} ", pr["author"]["login"], fg="gray")
-                cout("Updated: {}\n", pr["updatedAt"][:10], fg="gray")
-            else:
-                # Full format with clickable PR number
-                pr_number_text = f"#{pr['number']}"
-                clickable_number = f"\033]8;;{pr['url']}\033\\\033[96m{pr_number_text}\033[0m\033]8;;\033\\"
-                cout("{} ", clickable_number)
-                cout("{}\n", pr["title"], fg="white")
-                cout("  {} -> {}\n", pr["headRefName"], pr["baseRefName"], fg="gray")
-                cout("  Author: {}\n", pr["author"]["login"], fg="gray")
-                if check_text:
-                    cout("  {}\n", check_text, fg=check_color)
-                cout("  {}\n", pr["url"], fg="blue")
-                cout("  Updated: {}, Created: {}\n\n", pr["updatedAt"][:10], pr["createdAt"][:10], fg="gray")
+        display_pr_list(review_prs_data, show_author=True)
     else:
         cout("No pull requests awaiting your review.\n", fg="yellow")
 
