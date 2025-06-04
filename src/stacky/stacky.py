@@ -796,6 +796,7 @@ def cmd_branch_commit(stack: StackBranchSet, args):
         allow_empty=False,
         edit=True,
         add_all=args.add_all,
+        no_verify=args.no_verify,
     )
 
 
@@ -1198,7 +1199,7 @@ def cmd_stack_sync(stack: StackBranchSet, args):
     do_sync(get_current_stack_as_forest(stack))
 
 
-def do_commit(stack: StackBranchSet, *, message=None, amend=False, allow_empty=False, edit=True, add_all=False):
+def do_commit(stack: StackBranchSet, *, message=None, amend=False, allow_empty=False, edit=True, add_all=False, no_verify=False):
     b = stack.stack[CURRENT_BRANCH]
     if not b.parent:
         die("Do not commit directly on {}", b.name)
@@ -1220,6 +1221,8 @@ def do_commit(stack: StackBranchSet, *, message=None, amend=False, allow_empty=F
         cmd += ["-a"]
     if allow_empty:
         cmd += ["--allow-empty"]
+    if no_verify:
+        cmd += ["--no-verify"]
     if amend:
         cmd += ["--amend"]
         if not edit:
@@ -1243,11 +1246,12 @@ def cmd_commit(stack: StackBranchSet, args):
         allow_empty=args.allow_empty,
         edit=not args.no_edit,
         add_all=args.add_all,
+        no_verify=args.no_verify,
     )
 
 
 def cmd_amend(stack: StackBranchSet, args):
-    do_commit(stack, amend=True, edit=False)
+    do_commit(stack, amend=True, edit=False, no_verify=args.no_verify)
 
 
 def cmd_upstack_info(stack: StackBranchSet, args):
@@ -1920,10 +1924,12 @@ def main():
         commit_parser.add_argument("--allow-empty", action="store_true", help="Allow empty commit")
         commit_parser.add_argument("--no-edit", action="store_true", help="Skip editor")
         commit_parser.add_argument("-a", action="store_true", help="Add all files to commit", dest="add_all")
+        commit_parser.add_argument("--no-verify", action="store_true", help="Bypass pre-commit and commit-msg hooks")
         commit_parser.set_defaults(func=cmd_commit)
 
         # amend
         amend_parser = subparsers.add_parser("amend", help="Shortcut for amending last commit")
+        amend_parser.add_argument("--no-verify", action="store_true", help="Bypass pre-commit and commit-msg hooks")
         amend_parser.set_defaults(func=cmd_amend)
 
         # branch
@@ -1943,6 +1949,7 @@ def main():
         branch_commit_parser.add_argument("name", help="Branch name")
         branch_commit_parser.add_argument("-m", help="Commit message", dest="message")
         branch_commit_parser.add_argument("-a", action="store_true", help="Add all files to commit", dest="add_all")
+        branch_commit_parser.add_argument("--no-verify", action="store_true", help="Bypass pre-commit and commit-msg hooks")
         branch_commit_parser.set_defaults(func=cmd_branch_commit)
 
         branch_checkout_parser = branch_subparsers.add_parser("checkout", aliases=["co"], help="Checkout a branch")
