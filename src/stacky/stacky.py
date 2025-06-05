@@ -1471,19 +1471,28 @@ def delete_branches(stack: StackBranchSet, deletes: List[StackBranch]):
 def cleanup_unused_refs(stack: StackBranchSet):
     # Clean up stacky bottom branch refs
     info("Cleaning up unused refs")
+    
+    # Get the current list of existing branches in the repository
+    existing_branches = set(get_all_branches())
+    
+    # Clean up stacky bottom branch refs for non-existent branches
     stack_bottoms = get_all_stack_bottoms()
     for bottom in stack_bottoms:
-        if not bottom in stack.stack:
+        if bottom not in stack.stack or bottom not in existing_branches:
             ref = "refs/stacky-bottom-branch/{}".format(bottom)
-            info("Deleting ref {}".format(ref))
+            info("Deleting ref {} (branch {} no longer exists)".format(ref, bottom))
             run(CmdArgs(["git", "update-ref", "-d", ref]))
 
+    # Clean up stack parent refs for non-existent branches
     stack_parent_refs = get_all_stack_parent_refs()
     for br in stack_parent_refs:
-        if br not in stack.stack:
+        if br not in stack.stack or br not in existing_branches:
             ref = "refs/stack-parent/{}".format(br)
-            old_value = run(CmdArgs(["git", "show-ref", ref]))
-            info("Deleting ref {}".format(old_value))
+            old_value = run(CmdArgs(["git", "show-ref", ref]), check=False)
+            if old_value:
+                info("Deleting ref {} (branch {} no longer exists)".format(old_value, br))
+            else:
+                info("Deleting ref refs/stack-parent/{} (branch {} no longer exists)".format(br, br))
             run(CmdArgs(["git", "update-ref", "-d", ref]))
 
 
@@ -1525,6 +1534,7 @@ def cmd_update(stack: StackBranchSet, args):
     delete_branches(stack, deletes)
     stop_muxed_ssh(remote)
 
+    info("Cleaning up refs for non-existent branches")
     cleanup_unused_refs(stack)
 
 
