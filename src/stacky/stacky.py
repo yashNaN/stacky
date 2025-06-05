@@ -1143,14 +1143,6 @@ def get_commits_between(a: Commit, b: Commit):
     # Have to strip the last element because it's empty, rev list includes a new line at the end it seems
     return [x.strip() for x in lines.split("\n")][:-1]
 
-def get_commits_between_branches(a: BranchName, b: BranchName, *, no_merges: bool = False):
-    cmd = ["git", "log", "{}..{}".format(a, b), "--pretty=format:%H"]
-    if no_merges:
-        cmd.append("--no-merges")
-    lines = run_multiline(CmdArgs(cmd))
-    assert lines is not None
-    return [x.strip() for x in lines.split("\n")]
-
 def inner_do_sync(syncs: List[StackBranch], sync_names: List[BranchName]):
     print()
     sync_type = "merge" if get_config().use_merge else "rebase"
@@ -2211,7 +2203,7 @@ def cmd_fold(stack: StackBranchSet, args):
     else:
         # Cherry-pick approach: apply individual commits
         if commits_to_apply:
-            # Reverse the list since get_commits_between_branches returns newest first
+            # Reverse the list since get_commits_between returns newest first
             commits_to_apply = list(reversed(commits_to_apply))
             # Use inner_do_fold for state management
             inner_do_fold(stack, b.name, b.parent.name, commits_to_apply, [child.name for child in children], args.allow_empty)
