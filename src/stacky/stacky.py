@@ -120,7 +120,7 @@ class StackyConfig:
 
         if rawconfig.has_section("GIT"):
             self.use_merge = bool(rawconfig.get("GIT", "use_merge", fallback=self.use_merge))
-            self.use_merge = bool(rawconfig.get("GIT", "use_force_push", fallback=self.use_force_push))
+            self.use_force_push = bool(rawconfig.get("GIT", "use_force_push", fallback=self.use_force_push))
 
 
 CONFIG: Optional[StackyConfig] = None
@@ -1140,7 +1140,8 @@ def set_parent_commit(branch: BranchName, new_commit: Commit, prev_commit: Optio
 def get_commits_between(a: Commit, b: Commit):
     lines = run_multiline(CmdArgs(["git", "rev-list", "{}..{}".format(a, b)]))
     assert lines is not None
-    return [x.strip() for x in lines.split("\n")]
+    # Have to strip the last element because it's empty, rev list includes a new line at the end it seems
+    return [x.strip() for x in lines.split("\n")][:-1]
 
 def get_commits_between_branches(a: BranchName, b: BranchName, *, no_merges: bool = False):
     cmd = ["git", "log", "{}..{}".format(a, b), "--pretty=format:%H"]
@@ -2186,7 +2187,7 @@ def cmd_fold(stack: StackBranchSet, args):
         )
     
     # Get commits to be applied
-    commits_to_apply = get_commits_between_branches(b.parent.name, b.name, no_merges=True)
+    commits_to_apply = get_commits_between(b.parent_commit, b.commit)
     if not commits_to_apply:
         info("No commits to fold from {} into {}", b.name, b.parent.name)
     else:
@@ -2297,6 +2298,12 @@ def inner_do_fold(stack: StackBranchSet, fold_branch_name: BranchName, parent_br
                   commits_to_apply: List[str], children_names: List[BranchName], allow_empty: bool):
     """Continue folding operation from saved state"""
     print()
+    
+    # If no commits to apply, skip cherry-picking and go straight to cleanup
+    if not commits_to_apply:
+        finish_fold_operation(stack, fold_branch_name, parent_branch_name, children_names)
+        return
+    
     while commits_to_apply:
         with open(TMP_STATE_FILE, "w") as f:
             json.dump({
@@ -2312,6 +2319,24 @@ def inner_do_fold(stack: StackBranchSet, fold_branch_name: BranchName, parent_br
         os.replace(TMP_STATE_FILE, STATE_FILE)  # make the write atomic
 
         commit = commits_to_apply.pop()
+        
+        # Check if this commit would be empty by doing a dry-run cherry-pick
+        dry_run_result = run(CmdArgs(["git", "cherry-pick", "--no-commit", commit]), check=False)
+        if dry_run_result is not None:
+            # Check if there are any changes staged
+            has_changes = run(CmdArgs(["git", "diff", "--cached", "--quiet"]), check=False) is None
+            
+            # Reset the working directory and index since we only wanted to test
+            run(CmdArgs(["git", "reset", "--hard", "HEAD"]))
+            
+            if not has_changes:
+                cout("Skipping empty commit {}\n", commit[:8], fg="yellow")
+                continue
+        else:
+            # Cherry-pick failed during dry run, reset and try normal cherry-pick
+            # This could happen due to conflicts, so we'll let the normal cherry-pick handle it
+            run(CmdArgs(["git", "reset", "--hard", "HEAD"]), check=False)
+        
         cout("Cherry-picking commit {}\n", commit[:8], fg="green")
         cherry_pick_cmd = ["git", "cherry-pick"]
         if allow_empty:
