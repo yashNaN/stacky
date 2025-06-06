@@ -1726,7 +1726,8 @@ def cmd_inbox(stack: StackBranchSet, args):
         "reviewRequests",
         "mergeable",
         "mergeStateStatus",
-        "statusCheckRollup"
+        "statusCheckRollup",
+        "isDraft"
     ]
     
     # Get all open PRs authored by the current user
@@ -1773,7 +1774,10 @@ def cmd_inbox(stack: StackBranchSet, args):
     approved = []
     
     for pr in my_prs_data:
-        if pr["reviewDecision"] == "APPROVED":
+        if pr.get("isDraft", False):
+            # Draft PRs are always waiting on the author (me)
+            waiting_on_me.append(pr)
+        elif pr["reviewDecision"] == "APPROVED":
             approved.append(pr)
         elif pr["reviewRequests"] and len(pr["reviewRequests"]) > 0:
             waiting_on_review.append(pr)
@@ -1827,6 +1831,9 @@ def cmd_inbox(stack: StackBranchSet, args):
         if show_author:
             cout("by {} ", pr["author"]["login"], fg="gray")
         
+        if pr.get("isDraft", False):
+            cout("[DRAFT] ", fg="orange")
+        
         if check_text:
             cout("{} ", check_text, fg=check_color)
         
@@ -1845,6 +1852,9 @@ def cmd_inbox(stack: StackBranchSet, args):
         
         if show_author:
             cout("  Author: {}\n", pr["author"]["login"], fg="gray")
+        
+        if pr.get("isDraft", False):
+            cout("  [DRAFT]\n", fg="orange")
         
         if check_text:
             cout("  {}\n", check_text, fg=check_color)
