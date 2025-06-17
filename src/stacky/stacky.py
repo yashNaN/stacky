@@ -1710,6 +1710,68 @@ def cmd_land(stack: StackBranchSet, args):
     cout("\n✓ Success! Run `stacky update` to update local state.\n", fg="green")
 
 
+def edit_pr_description(pr):
+    """Edit a PR's description using the user's default editor"""
+    import tempfile
+    
+    cout("Editing PR #{} - {}\n", pr["number"], pr["title"], fg="green")
+    cout("Current description:\n", fg="yellow")
+    current_body = pr.get("body", "")
+    if current_body:
+        cout("{}\n\n", current_body, fg="gray")
+    else:
+        cout("(No description)\n\n", fg="gray")
+    
+    # Create a temporary file with the current description
+    with tempfile.NamedTemporaryFile(mode='w+', suffix='.md', delete=False) as temp_file:
+        temp_file.write(current_body or "")
+        temp_file_path = temp_file.name
+    
+    try:
+        # Get the user's preferred editor
+        editor = os.environ.get('EDITOR', 'vim')
+        
+        # Open the editor
+        result = subprocess.run([editor, temp_file_path])
+        if result.returncode != 0:
+            cout("Editor exited with error, not updating PR description.\n", fg="red")
+            return
+        
+        # Read the edited content
+        with open(temp_file_path, 'r') as temp_file:
+            new_body = temp_file.read().strip()
+        
+        # Normalize both original and new content for comparison
+        original_content = (current_body or "").strip()
+        new_content = new_body.strip()
+        
+        # Check if the content actually changed
+        if new_content == original_content:
+            cout("No changes made to PR description.\n", fg="yellow")
+            return
+        
+        # Update the PR description using gh CLI
+        cout("Updating PR description...\n", fg="green")
+        run(CmdArgs([
+            "gh", "pr", "edit", str(pr["number"]),
+            "--body", new_body
+        ]), out=True)
+        
+        cout("✓ Successfully updated PR #{} description\n", pr["number"], fg="green")
+        
+        # Update the PR object for display consistency
+        pr["body"] = new_body
+        
+    except Exception as e:
+        cout("Error editing PR description: {}\n", str(e), fg="red")
+    finally:
+        # Clean up the temporary file
+        try:
+            os.unlink(temp_file_path)
+        except OSError:
+            pass
+
+
 def cmd_inbox(stack: StackBranchSet, args):
     """List all active GitHub pull requests for the current user"""
     fields = [
@@ -1727,7 +1789,8 @@ def cmd_inbox(stack: StackBranchSet, args):
         "mergeable",
         "mergeStateStatus",
         "statusCheckRollup",
-        "isDraft"
+        "isDraft",
+        "body"
     ]
     
     # Get all open PRs authored by the current user
@@ -1895,6 +1958,94 @@ def cmd_inbox(stack: StackBranchSet, args):
         display_pr_list(review_prs_data, show_author=True)
     else:
         cout("No pull requests awaiting your review.\n", fg="yellow")
+
+
+def cmd_prs(stack: StackBranchSet, args):
+    """Interactive PR management - select and edit PR descriptions"""
+    fields = [
+        "number",
+        "title", 
+        "headRefName",
+        "baseRefName",
+        "state",
+        "url",
+        "createdAt",
+        "updatedAt",
+        "author",
+        "reviewDecision",
+        "reviewRequests",
+        "mergeable",
+        "mergeStateStatus",
+        "statusCheckRollup",
+        "isDraft",
+        "body"
+    ]
+    
+    # Get all open PRs authored by the current user
+    my_prs_data = json.loads(
+        run_always_return(
+            CmdArgs(
+                [
+                    "gh",
+                    "pr",
+                    "list",
+                    "--json",
+                    ",".join(fields),
+                    "--state",
+                    "open",
+                    "--author",
+                    "@me"
+                ]
+            )
+        )
+    )
+    
+    # Get all open PRs where current user is requested as reviewer
+    review_prs_data = json.loads(
+        run_always_return(
+            CmdArgs(
+                [
+                    "gh",
+                    "pr",
+                    "list",
+                    "--json",
+                    ",".join(fields),
+                    "--state",
+                    "open",
+                    "--search",
+                    "review-requested:@me"
+                ]
+            )
+        )
+    )
+    
+    # Combine all PRs
+    all_prs = my_prs_data + review_prs_data
+    if not all_prs:
+        cout("No active pull requests found.\n", fg="green")
+        return
+    
+    if not IS_TERMINAL:
+        die("Interactive PR management requires a terminal")
+    
+    # Create simple menu options
+    menu_options = []
+    for pr in all_prs:
+        # Simple menu line with just PR number and title
+        menu_options.append(f"#{pr['number']} {pr['title']}")
+    
+    menu_options.append("Exit")
+    
+    while True:
+        cout("\nSelect a PR to edit its description:\n", fg="cyan")
+        menu = TerminalMenu(menu_options, cursor_index=0)
+        idx = menu.show()
+        
+        if idx is None or idx == len(menu_options) - 1:  # Exit selected or cancelled
+            break
+            
+        selected_pr = all_prs[idx]
+        edit_pr_description(selected_pr)
 
 
 def main():
@@ -2088,6 +2239,10 @@ def main():
         inbox_parser = subparsers.add_parser("inbox", help="List all active GitHub pull requests for the current user")
         inbox_parser.add_argument("--compact", "-c", action="store_true", help="Show compact view")
         inbox_parser.set_defaults(func=cmd_inbox)
+
+        # prs
+        prs_parser = subparsers.add_parser("prs", help="Interactive PR management - select and edit PR descriptions")
+        prs_parser.set_defaults(func=cmd_prs)
 
         # fold
         fold_parser = subparsers.add_parser("fold", help="Fold current branch into parent branch and delete current branch")

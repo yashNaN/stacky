@@ -35,6 +35,7 @@ Stacky doesn't use any git or Github APIs. It expects `git` and `gh` cli command
 Syntax is as follows:
 - `stacky info`: show all stacks , add `-pr` if you want to see GitHub PR numbers (slows things down a bit)
 - `stacky inbox [--compact]`: show all active GitHub pull requests for the current user, organized by status (waiting on you, waiting on review, approved, and PRs awaiting your review). Use `--compact` or `-c` for a condensed one-line-per-PR view with clickable PR numbers.
+- `stacky prs`: interactive PR management tool that allows you to select and edit PR descriptions. Shows a simple menu of all your open PRs and PRs awaiting your review, then opens your preferred editor (from `$EDITOR` environment variable) to modify the selected PR's description.
 - `stacky branch`: per branch commands (shortcut: `stacky b`)
     - `stacky branch up` (`stacky b u`): move down the stack (towards `master`)
     - `stacky branch down` (`stacky b d`): move down the stack (towards `master`)
@@ -59,12 +60,12 @@ The indicators (`*`, `~`, `!`) mean:
 ```
 $ stacky --help
 usage: stacky [-h] [--color {always,auto,never}]
-              {continue,info,commit,amend,branch,b,stack,s,upstack,us,downstack,ds,update,import,adopt,land,push,sync,checkout,co,sco,inbox,fold} ...
+              {continue,info,commit,amend,branch,b,stack,s,upstack,us,downstack,ds,update,import,adopt,land,push,sync,checkout,co,sco,inbox,prs,fold} ...
 
 Handle git stacks
 
 positional arguments:
-  {continue,info,commit,amend,branch,b,stack,s,upstack,us,downstack,ds,update,import,adopt,land,push,sync,checkout,co,sco,inbox,fold}
+  {continue,info,commit,amend,branch,b,stack,s,upstack,us,downstack,ds,update,import,adopt,land,push,sync,checkout,co,sco,inbox,prs,fold}
     continue            Continue previously interrupted command
     info                Stack info
     commit              Commit
@@ -82,6 +83,7 @@ positional arguments:
     checkout (co)       Checkout a branch
     sco                 Checkout a branch in this stack
     inbox               List all active GitHub pull requests for the current user
+    prs                 Interactive PR management - select and edit PR descriptions
     fold                Fold current branch into parent branch and delete current branch
 
 optional arguments:
