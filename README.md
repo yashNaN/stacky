@@ -12,7 +12,8 @@ There is also a [xar](https://github.com/facebookincubator/xar/) version it shou
 
 ### Pip
 ```
-pip3 install rockset-stacky
+1. Clone this repository
+2. From this repository root run `pip install -e .`
 ```
 
 ### Manual
