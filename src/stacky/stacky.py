@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# PYTHON_ARGCOMPLETE_OK
 
 # GitHub helper for stacked diffs.
 #
@@ -37,6 +38,7 @@ import time
 from argparse import ArgumentParser
 from typing import Dict, FrozenSet, Generator, List, NewType, Optional, Tuple, TypedDict, Union
 
+import argcomplete  # type: ignore
 import asciitree  # type: ignore
 import colors  # type: ignore
 from simple_term_menu import TerminalMenu  # type: ignore
@@ -263,6 +265,15 @@ def get_all_branches() -> List[BranchName]:
     branches = run_multiline(CmdArgs(["git", "for-each-ref", "--format", "%(refname:short)", "refs/heads"]))
     assert branches is not None
     return [BranchName(b) for b in branches.split("\n") if b]
+
+
+def branch_name_completer(prefix, parsed_args, **kwargs):
+    """Argcomplete completer function for branch names."""
+    try:
+        branches = get_all_branches()
+        return [branch for branch in branches if branch.startswith(prefix)]
+    except Exception:
+        return []
 
 
 def get_real_stack_bottom() -> Optional[BranchName]:  # type: ignore [return]
@@ -2124,7 +2135,7 @@ def main():
         branch_commit_parser.set_defaults(func=cmd_branch_commit)
 
         branch_checkout_parser = branch_subparsers.add_parser("checkout", aliases=["co"], help="Checkout a branch")
-        branch_checkout_parser.add_argument("name", help="Branch name", nargs="?")
+        branch_checkout_parser.add_argument("name", help="Branch name", nargs="?").completer = branch_name_completer
         branch_checkout_parser.set_defaults(func=cmd_branch_checkout)
 
         # stack
@@ -2169,7 +2180,7 @@ def main():
         upstack_onto_parser.set_defaults(func=cmd_upstack_onto)
 
         upstack_as_parser = upstack_subparsers.add_parser("as", help="Upstack branch this as a new stack bottom")
-        upstack_as_parser.add_argument("target", help="bottom, restack this branch as a new stack bottom")
+        upstack_as_parser.add_argument("target", help="bottom, restack this branch as a new stack bottom").completer = branch_name_completer
         upstack_as_parser.set_defaults(func=cmd_upstack_as)
 
         # downstack
@@ -2200,12 +2211,12 @@ def main():
         # import
         import_parser = subparsers.add_parser("import", help="Import Graphite stack")
         import_parser.add_argument("--force", "-f", action="store_true", help="Bypass confirmation")
-        import_parser.add_argument("name", help="Foreign stack top")
+        import_parser.add_argument("name", help="Foreign stack top").completer = branch_name_completer
         import_parser.set_defaults(func=cmd_import)
 
         # adopt
         adopt_parser = subparsers.add_parser("adopt", help="Adopt one branch")
-        adopt_parser.add_argument("name", help="Branch name")
+        adopt_parser.add_argument("name", help="Branch name").completer = branch_name_completer
         adopt_parser.set_defaults(func=cmd_adopt)
 
         # land
@@ -2229,7 +2240,7 @@ def main():
         sync_parser.set_defaults(func=cmd_stack_sync)
 
         checkout_parser = subparsers.add_parser("checkout", aliases=["co"], help="Checkout a branch")
-        checkout_parser.add_argument("name", help="Branch name", nargs="?")
+        checkout_parser.add_argument("name", help="Branch name", nargs="?").completer = branch_name_completer
         checkout_parser.set_defaults(func=cmd_branch_checkout)
 
         checkout_parser = subparsers.add_parser("sco", help="Checkout a branch in this stack")
@@ -2249,6 +2260,7 @@ def main():
         fold_parser.add_argument("--allow-empty", action="store_true", help="Allow empty commits during cherry-pick")
         fold_parser.set_defaults(func=cmd_fold)
 
+        argcomplete.autocomplete(parser)
         args = parser.parse_args()
         logging.basicConfig(format=_LOGGING_FORMAT, level=LOGLEVELS[args.log_level], force=True)
 
