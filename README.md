@@ -20,12 +20,47 @@ pip3 install rockset-stacky
 1. asciitree
 2. ansicolors
 3. simple-term-menu
+4. argcomplete (for tab completion)
 ```
-pip3 install asciitree ansicolors simple-term-menu
+pip3 install asciitree ansicolors simple-term-menu argcomplete
 ```
 
 After which `stacky` can be directly run with `./src/stacky/stacky.py`. We would recommend symlinking `stacky.py` into your path so you can use it anywhere
 
+## Tab Completion
+
+Stacky supports tab completion for branch names in bash and zsh. To enable it:
+
+### One-time setup
+```bash
+# Install argcomplete
+pip3 install argcomplete
+
+# Enable global completion (recommended)
+activate-global-python-argcomplete
+```
+
+### Per-session setup (alternative)
+If you prefer not to use global completion, you can enable it per session:
+```bash
+# For bash/zsh
+eval "$(register-python-argcomplete stacky)"
+```
+
+### Permanent setup (alternative)
+Add the completion to your shell config:
+```bash
+# For bash - add to ~/.bashrc
+eval "$(register-python-argcomplete stacky)"
+
+# For zsh - add to ~/.zshrc  
+eval "$(register-python-argcomplete stacky)"
+```
+
+After setup, you can use tab completion with commands like:
+- `stacky checkout <TAB>` - completes branch names
+- `stacky adopt <TAB>` - completes branch names
+- `stacky branch checkout <TAB>` - completes branch names
 
 ## Accessing Github
 Stacky doesn't use any git or Github APIs. It expects `git` and `gh` cli commands to work and be properly configured. For instructions on installing the github cli `gh` please read their [documentation](https://cli.github.com/manual/).
