@@ -88,6 +88,36 @@ Syntax is as follows:
 - `stacky continue`: continue an interrupted stacky sync command (because of conflicts)
 - `stacky update`: will pull changes from github and update master, and deletes branches that have been merged into master
 
+## Stack Comments in Pull Requests
+
+When using `stacky push` (or any push variant that creates/updates PRs), Stacky automatically manages stack information comments in your pull request descriptions. These comments help reviewers understand the context and dependencies of each PR in the stack.
+
+### How it works:
+- **New PRs**: Automatically get a stack comment added to their description
+- **Existing PRs**: Get stack comments added if they don't have one, or updated if the stack structure changes
+- **Correct PRs**: Are verified and left unchanged if the stack comment is already accurate
+
+### Stack Comment Format:
+```markdown
+<!-- Stacky Stack Info -->
+**Stack:**
+- feature/base-changes (#123)
+  - feature/middle-layer (#124)
+    - feature/top-level (#125)
+<!-- End Stacky Stack Info -->
+```
+
+The comment shows:
+- **Hierarchical structure**: Each child PR is indented under its parent
+- **Branch names**: The actual Git branch names
+- **PR numbers**: GitHub PR numbers in parentheses for branches with open PRs
+- **Dependencies**: Visual representation of which PRs depend on which others
+
+This automatic stack documentation helps reviewers understand:
+- Which PRs need to be merged first
+- How changes in one PR might affect others
+- The overall scope and organization of your feature work
+
 The indicators (`*`, `~`, `!`) mean:
 - `*` — this is the current branch
 - `~` — the branch is not in sync with the remote branch (you should push)
