@@ -966,6 +966,117 @@ def create_gh_pr(b: StackBranch, prefix: str):
     )
 
 
+def generate_stack_string(forest: BranchesTreeForest) -> str:
+    """Generate a string representation of the PR stack"""
+    stack_lines = []
+    
+    def add_branch_to_stack(b: StackBranch, depth: int):
+        if not b.parent or b.name in STACK_BOTTOMS:
+            return
+        
+        indent = "  " * depth
+        pr_info = ""
+        if b.open_pr_info:
+            pr_info = f" (#{b.open_pr_info['number']})"
+        
+        stack_lines.append(f"{indent}- {b.name}{pr_info}")
+    
+    def traverse_tree(tree: BranchesTree, depth: int):
+        for _, (branch, children) in tree.items():
+            add_branch_to_stack(branch, depth)
+            traverse_tree(children, depth + 1)
+    
+    for tree in forest:
+        traverse_tree(tree, 0)
+    
+    if not stack_lines:
+        return ""
+    
+    return "\n".join([
+        "<!-- Stacky Stack Info -->",
+        "**Stack:**",
+        *stack_lines,
+        "<!-- End Stacky Stack Info -->"
+    ])
+
+
+def get_branch_depth(branch: StackBranch, forest: BranchesTreeForest) -> int:
+    """Calculate the depth of a branch in the stack"""
+    depth = 0
+    b = branch
+    while b.parent and b.parent.name not in STACK_BOTTOMS:
+        depth += 1
+        b = b.parent
+    return depth
+
+
+def extract_stack_comment(body: str) -> str:
+    """Extract existing stack comment from PR body"""
+    if not body:
+        return ""
+    
+    # Look for the stack comment pattern using HTML comments as sentinels
+    import re
+    pattern = r'<!-- Stacky Stack Info -->.*?<!-- End Stacky Stack Info -->'
+    match = re.search(pattern, body, re.DOTALL)
+    
+    if match:
+        return match.group(0).strip()
+    return ""
+
+
+def add_or_update_stack_comment(branch: StackBranch, forest: BranchesTreeForest):
+    """Add or update stack comment in PR body"""
+    if not branch.open_pr_info:
+        return
+    
+    pr_number = branch.open_pr_info["number"]
+    
+    # Get current PR body
+    pr_data = json.loads(
+        run_always_return(
+            CmdArgs([
+                "gh", "pr", "view", str(pr_number), 
+                "--json", "body"
+            ])
+        )
+    )
+    
+    current_body = pr_data.get("body", "")
+    stack_string = generate_stack_string(forest)
+    
+    if not stack_string:
+        return
+    
+    existing_stack = extract_stack_comment(current_body)
+    
+    if not existing_stack:
+        # No existing stack comment, add one
+        if current_body:
+            new_body = f"{current_body}\n\n{stack_string}"
+        else:
+            new_body = stack_string
+        
+        cout("Adding stack comment to PR #{}\n", pr_number, fg="green")
+        run(CmdArgs([
+            "gh", "pr", "edit", str(pr_number),
+            "--body", new_body
+        ]), out=True)
+    else:
+        # Verify existing stack comment is correct
+        if existing_stack != stack_string:
+            # Update the stack comment
+            updated_body = current_body.replace(existing_stack, stack_string)
+            
+            cout("Updating stack comment in PR #{}\n", pr_number, fg="yellow")
+            run(CmdArgs([
+                "gh", "pr", "edit", str(pr_number),
+                "--body", updated_body
+            ]), out=True)
+        else:
+            cout("✓ Stack comment in PR #{} is already correct\n", pr_number, fg="green")
+
+
 def do_push(
     forest: BranchesTreeForest,
     *,
@@ -1091,6 +1202,12 @@ def do_push(
             )
         elif pr_action == PR_CREATE:
             create_gh_pr(b, prefix)
+    
+    # Handle stack comments for PRs
+    if pr:
+        for b in forest_depth_first(forest):
+            if b.open_pr_info:
+                add_or_update_stack_comment(b, forest)
 
     stop_muxed_ssh(remote_name)
 
