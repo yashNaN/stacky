@@ -971,7 +971,7 @@ def generate_stack_string(forest: BranchesTreeForest) -> str:
     stack_lines = []
     
     def add_branch_to_stack(b: StackBranch, depth: int):
-        if not b.parent or b.name in STACK_BOTTOMS:
+        if b.name in STACK_BOTTOMS:
             return
         
         indent = "  " * depth
