@@ -732,6 +732,14 @@ def cmd_info(stack: StackBranchSet, args):
     print_forest(forest)
 
 
+def cmd_log(stack: StackBranchSet, args):
+    config = get_config()
+    if config.use_merge:
+        run(["git", "log", "--no-merges", "--first-parent"], out=True)
+    else:
+        run(["git", "log"], out=True)
+
+
 def checkout(branch):
     info("Checking out branch {}", branch)
     run(["git", "checkout", branch], out=True)
@@ -2215,6 +2223,10 @@ def main():
         info_parser = subparsers.add_parser("info", help="Stack info")
         info_parser.add_argument("--pr", action="store_true", help="Get PR info (slow)")
         info_parser.set_defaults(func=cmd_info)
+
+        # log
+        log_parser = subparsers.add_parser("log", help="Show git log with conditional merge handling")
+        log_parser.set_defaults(func=cmd_log)
 
         # commit
         commit_parser = subparsers.add_parser("commit", help="Commit")
