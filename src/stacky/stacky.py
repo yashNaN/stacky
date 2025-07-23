@@ -974,7 +974,7 @@ def create_gh_pr(b: StackBranch, prefix: str):
     )
 
 
-def generate_stack_string(forest: BranchesTreeForest) -> str:
+def generate_stack_string(forest: BranchesTreeForest, current_branch: StackBranch) -> str:
     """Generate a string representation of the PR stack"""
     stack_lines = []
 
@@ -986,9 +986,12 @@ def generate_stack_string(forest: BranchesTreeForest) -> str:
         pr_info = ""
         if b.open_pr_info:
             pr_info = f" (#{b.open_pr_info['number']})"
-
-        stack_lines.append(f"{indent}- {b.name}{pr_info}")
-
+        
+        # Add arrow indicator for current branch (the one this PR represents)
+        current_indicator = " ← (CURRENT PR)" if b.name == current_branch.name else ""
+        
+        stack_lines.append(f"{indent}- {b.name}{pr_info}{current_indicator}")
+    
     def traverse_tree(tree: BranchesTree, depth: int):
         for _, (branch, children) in tree.items():
             add_branch_to_stack(branch, depth)
@@ -1051,8 +1054,8 @@ def add_or_update_stack_comment(branch: StackBranch, forest: BranchesTreeForest)
     )
 
     current_body = pr_data.get("body", "")
-    stack_string = generate_stack_string(forest)
-
+    stack_string = generate_stack_string(forest, branch)
+    
     if not stack_string:
         return
 
