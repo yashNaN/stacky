@@ -138,7 +138,7 @@ def get_config() -> StackyConfig:
 def read_config() -> StackyConfig:
     config = StackyConfig()
     config_paths = [os.path.expanduser("~/.stackyconfig")]
-    
+
     try:
         root_dir = get_top_level_dir()
         config_paths.append(f"{root_dir}/.stackyconfig")
@@ -793,20 +793,20 @@ def cmd_branch_new(stack: StackBranchSet, args):
 def cmd_branch_commit(stack: StackBranchSet, args):
     """Create a new branch and commit all changes with the provided message"""
     global CURRENT_BRANCH
-    
+
     # First create the new branch (same logic as cmd_branch_new)
     b = stack.stack[CURRENT_BRANCH]
     assert b.commit
     name = args.name
     create_branch(name)
     run(CmdArgs(["git", "update-ref", "refs/stack-parent/{}".format(name), b.commit, ""]))
-    
+
     # Update global CURRENT_BRANCH since we just checked out the new branch
     CURRENT_BRANCH = BranchName(name)
-    
+
     # Reload the stack to include the new branch
     load_stack_for_given_branch(stack, CURRENT_BRANCH)
-    
+
     # Now commit all changes with the provided message (or open editor if no message)
     do_commit(
         stack,
@@ -865,7 +865,7 @@ def confirm(msg: str = "Proceed?"):
         cout("{} [yes/no] ", msg, fg="yellow")
         sys.stderr.flush()
         r = input().strip().lower()
-        if r == "yes":
+        if r == "yes" or r == "y":
             break
         if r == "no":
             die("Not confirmed")
@@ -977,11 +977,11 @@ def create_gh_pr(b: StackBranch, prefix: str):
 def generate_stack_string(forest: BranchesTreeForest, current_branch: StackBranch) -> str:
     """Generate a string representation of the PR stack"""
     stack_lines = []
-    
+
     def add_branch_to_stack(b: StackBranch, depth: int):
         if b.name in STACK_BOTTOMS:
             return
-        
+
         indent = "  " * depth
         pr_info = ""
         if b.open_pr_info:
@@ -996,13 +996,13 @@ def generate_stack_string(forest: BranchesTreeForest, current_branch: StackBranc
         for _, (branch, children) in tree.items():
             add_branch_to_stack(branch, depth)
             traverse_tree(children, depth + 1)
-    
+
     for tree in forest:
         traverse_tree(tree, 0)
-    
+
     if not stack_lines:
         return ""
-    
+
     return "\n".join([
         "<!-- Stacky Stack Info -->",
         "**Stack:**",
@@ -1025,12 +1025,12 @@ def extract_stack_comment(body: str) -> str:
     """Extract existing stack comment from PR body"""
     if not body:
         return ""
-    
+
     # Look for the stack comment pattern using HTML comments as sentinels
     import re
     pattern = r'<!-- Stacky Stack Info -->.*?<!-- End Stacky Stack Info -->'
     match = re.search(pattern, body, re.DOTALL)
-    
+
     if match:
         return match.group(0).strip()
     return ""
@@ -1040,34 +1040,34 @@ def add_or_update_stack_comment(branch: StackBranch, forest: BranchesTreeForest)
     """Add or update stack comment in PR body"""
     if not branch.open_pr_info:
         return
-    
+
     pr_number = branch.open_pr_info["number"]
-    
+
     # Get current PR body
     pr_data = json.loads(
         run_always_return(
             CmdArgs([
-                "gh", "pr", "view", str(pr_number), 
+                "gh", "pr", "view", str(pr_number),
                 "--json", "body"
             ])
         )
     )
-    
+
     current_body = pr_data.get("body", "")
     stack_string = generate_stack_string(forest, branch)
     
     if not stack_string:
         return
-    
+
     existing_stack = extract_stack_comment(current_body)
-    
+
     if not existing_stack:
         # No existing stack comment, add one
         if current_body:
             new_body = f"{current_body}\n\n{stack_string}"
         else:
             new_body = stack_string
-        
+
         cout("Adding stack comment to PR #{}\n", pr_number, fg="green")
         run(CmdArgs([
             "gh", "pr", "edit", str(pr_number),
@@ -1078,7 +1078,7 @@ def add_or_update_stack_comment(branch: StackBranch, forest: BranchesTreeForest)
         if existing_stack != stack_string:
             # Update the stack comment
             updated_body = current_body.replace(existing_stack, stack_string)
-            
+
             cout("Updating stack comment in PR #{}\n", pr_number, fg="yellow")
             run(CmdArgs([
                 "gh", "pr", "edit", str(pr_number),
@@ -1213,7 +1213,7 @@ def do_push(
             )
         elif pr_action == PR_CREATE:
             create_gh_pr(b, prefix)
-    
+
     # Handle stack comments for PRs
     if pr:
         for b in forest_depth_first(forest):
@@ -1610,10 +1610,10 @@ def delete_branches(stack: StackBranchSet, deletes: List[StackBranch]):
 def cleanup_unused_refs(stack: StackBranchSet):
     # Clean up stacky bottom branch refs
     info("Cleaning up unused refs")
-    
+
     # Get the current list of existing branches in the repository
     existing_branches = set(get_all_branches())
-    
+
     # Clean up stacky bottom branch refs for non-existent branches
     stack_bottoms = get_all_stack_bottoms()
     for bottom in stack_bottoms:
@@ -1852,7 +1852,7 @@ def cmd_land(stack: StackBranchSet, args):
 def edit_pr_description(pr):
     """Edit a PR's description using the user's default editor"""
     import tempfile
-    
+
     cout("Editing PR #{} - {}\n", pr["number"], pr["title"], fg="green")
     cout("Current description:\n", fg="yellow")
     current_body = pr.get("body", "")
@@ -1860,47 +1860,47 @@ def edit_pr_description(pr):
         cout("{}\n\n", current_body, fg="gray")
     else:
         cout("(No description)\n\n", fg="gray")
-    
+
     # Create a temporary file with the current description
     with tempfile.NamedTemporaryFile(mode='w+', suffix='.md', delete=False) as temp_file:
         temp_file.write(current_body or "")
         temp_file_path = temp_file.name
-    
+
     try:
         # Get the user's preferred editor
         editor = os.environ.get('EDITOR', 'vim')
-        
+
         # Open the editor
         result = subprocess.run([editor, temp_file_path])
         if result.returncode != 0:
             cout("Editor exited with error, not updating PR description.\n", fg="red")
             return
-        
+
         # Read the edited content
         with open(temp_file_path, 'r') as temp_file:
             new_body = temp_file.read().strip()
-        
+
         # Normalize both original and new content for comparison
         original_content = (current_body or "").strip()
         new_content = new_body.strip()
-        
+
         # Check if the content actually changed
         if new_content == original_content:
             cout("No changes made to PR description.\n", fg="yellow")
             return
-        
+
         # Update the PR description using gh CLI
         cout("Updating PR description...\n", fg="green")
         run(CmdArgs([
             "gh", "pr", "edit", str(pr["number"]),
             "--body", new_body
         ]), out=True)
-        
+
         cout("✓ Successfully updated PR #{} description\n", pr["number"], fg="green")
-        
+
         # Update the PR object for display consistency
         pr["body"] = new_body
-        
+
     except Exception as e:
         cout("Error editing PR description: {}\n", str(e), fg="red")
     finally:
@@ -1915,7 +1915,7 @@ def cmd_inbox(stack: StackBranchSet, args):
     """List all active GitHub pull requests for the current user"""
     fields = [
         "number",
-        "title", 
+        "title",
         "headRefName",
         "baseRefName",
         "state",
@@ -1931,7 +1931,7 @@ def cmd_inbox(stack: StackBranchSet, args):
         "isDraft",
         "body"
     ]
-    
+
     # Get all open PRs authored by the current user
     my_prs_data = json.loads(
         run_always_return(
@@ -1950,7 +1950,7 @@ def cmd_inbox(stack: StackBranchSet, args):
             )
         )
     )
-    
+
     # Get all open PRs where current user is requested as reviewer
     review_prs_data = json.loads(
         run_always_return(
@@ -1969,12 +1969,12 @@ def cmd_inbox(stack: StackBranchSet, args):
             )
         )
     )
-    
+
     # Categorize my PRs based on review status
     waiting_on_me = []
     waiting_on_review = []
     approved = []
-    
+
     for pr in my_prs_data:
         if pr.get("isDraft", False):
             # Draft PRs are always waiting on the author (me)
@@ -1986,29 +1986,29 @@ def cmd_inbox(stack: StackBranchSet, args):
         else:
             # No pending review requests, likely needs changes or author action
             waiting_on_me.append(pr)
-    
+
     # Sort all lists by updatedAt in descending order (most recent first)
     waiting_on_me.sort(key=lambda pr: pr["updatedAt"], reverse=True)
     waiting_on_review.sort(key=lambda pr: pr["updatedAt"], reverse=True)
     approved.sort(key=lambda pr: pr["updatedAt"], reverse=True)
     review_prs_data.sort(key=lambda pr: pr["updatedAt"], reverse=True)
-    
+
     def get_check_status(pr):
         """Get a summary of merge check status"""
         if not pr.get("statusCheckRollup") or len(pr.get("statusCheckRollup")) == 0:
             return "", "gray"
-        
+
         rollup = pr["statusCheckRollup"]
-        
+
         # statusCheckRollup is a list of checks, determine overall state
         states = []
         for check in rollup:
             if isinstance(check, dict) and "state" in check:
                 states.append(check["state"])
-        
+
         if not states:
             return "", "gray"
-        
+
         # Determine overall status based on individual check states
         if "FAILURE" in states or "ERROR" in states:
             return "✗ Checks failed", "red"
@@ -2018,52 +2018,52 @@ def cmd_inbox(stack: StackBranchSet, args):
             return "✓ Checks passed", "green"
         else:
             return f"Checks mixed", "yellow"
-    
+
     def display_pr_compact(pr, show_author=False):
         """Display a single PR in compact format"""
         check_text, check_color = get_check_status(pr)
-        
+
         # Create clickable link for PR number
         pr_number_text = f"#{pr['number']}"
         clickable_number = f"\033]8;;{pr['url']}\033\\\033[96m{pr_number_text}\033[0m\033]8;;\033\\"
         cout("{} ", clickable_number)
         cout("{} ", pr["title"], fg="white")
         cout("({}) ", pr["headRefName"], fg="gray")
-        
+
         if show_author:
             cout("by {} ", pr["author"]["login"], fg="gray")
-        
+
         if pr.get("isDraft", False):
             cout("[DRAFT] ", fg="orange")
-        
+
         if check_text:
             cout("{} ", check_text, fg=check_color)
-        
+
         cout("Updated: {}\n", pr["updatedAt"][:10], fg="gray")
-    
+
     def display_pr_full(pr, show_author=False):
         """Display a single PR in full format"""
         check_text, check_color = get_check_status(pr)
-        
+
         # Create clickable link for PR number
         pr_number_text = f"#{pr['number']}"
         clickable_number = f"\033]8;;{pr['url']}\033\\\033[96m{pr_number_text}\033[0m\033]8;;\033\\"
         cout("{} ", clickable_number)
         cout("{}\n", pr["title"], fg="white")
         cout("  {} -> {}\n", pr["headRefName"], pr["baseRefName"], fg="gray")
-        
+
         if show_author:
             cout("  Author: {}\n", pr["author"]["login"], fg="gray")
-        
+
         if pr.get("isDraft", False):
             cout("  [DRAFT]\n", fg="orange")
-        
+
         if check_text:
             cout("  {}\n", check_text, fg=check_color)
-        
+
         cout("  {}\n", pr["url"], fg="blue")
         cout("  Updated: {}, Created: {}\n\n", pr["updatedAt"][:10], pr["createdAt"][:10], fg="gray")
-    
+
     def display_pr_list(prs, show_author=False):
         """Display a list of PRs in the chosen format"""
         for pr in prs:
@@ -2071,26 +2071,26 @@ def cmd_inbox(stack: StackBranchSet, args):
                 display_pr_compact(pr, show_author)
             else:
                 display_pr_full(pr, show_author)
-    
+
     # Display categorized authored PRs
     if waiting_on_me:
         cout("Your PRs - Waiting on You:\n", fg="red")
         display_pr_list(waiting_on_me)
         cout("\n")
-    
+
     if waiting_on_review:
         cout("Your PRs - Waiting on Review:\n", fg="yellow")
         display_pr_list(waiting_on_review)
         cout("\n")
-    
+
     if approved:
         cout("Your PRs - Approved:\n", fg="green")
         display_pr_list(approved)
         cout("\n")
-    
+
     if not my_prs_data:
         cout("No active pull requests authored by you.\n", fg="green")
-    
+
     # Display PRs waiting for review
     if review_prs_data:
         cout("Pull Requests Awaiting Your Review:\n", fg="yellow")
@@ -2103,7 +2103,7 @@ def cmd_prs(stack: StackBranchSet, args):
     """Interactive PR management - select and edit PR descriptions"""
     fields = [
         "number",
-        "title", 
+        "title",
         "headRefName",
         "baseRefName",
         "state",
@@ -2119,7 +2119,7 @@ def cmd_prs(stack: StackBranchSet, args):
         "isDraft",
         "body"
     ]
-    
+
     # Get all open PRs authored by the current user
     my_prs_data = json.loads(
         run_always_return(
@@ -2138,7 +2138,7 @@ def cmd_prs(stack: StackBranchSet, args):
             )
         )
     )
-    
+
     # Get all open PRs where current user is requested as reviewer
     review_prs_data = json.loads(
         run_always_return(
@@ -2157,32 +2157,32 @@ def cmd_prs(stack: StackBranchSet, args):
             )
         )
     )
-    
+
     # Combine all PRs
     all_prs = my_prs_data + review_prs_data
     if not all_prs:
         cout("No active pull requests found.\n", fg="green")
         return
-    
+
     if not IS_TERMINAL:
         die("Interactive PR management requires a terminal")
-    
+
     # Create simple menu options
     menu_options = []
     for pr in all_prs:
         # Simple menu line with just PR number and title
         menu_options.append(f"#{pr['number']} {pr['title']}")
-    
+
     menu_options.append("Exit")
-    
+
     while True:
         cout("\nSelect a PR to edit its description:\n", fg="cyan")
         menu = TerminalMenu(menu_options, cursor_index=0)
         idx = menu.show()
-        
+
         if idx is None or idx == len(menu_options) - 1:  # Exit selected or cancelled
             break
-            
+
         selected_pr = all_prs[idx]
         edit_pr_description(selected_pr)
 
@@ -2478,43 +2478,43 @@ def main():
 def cmd_fold(stack: StackBranchSet, args):
     """Fold current branch into parent branch and delete current branch"""
     global CURRENT_BRANCH
-    
+
     if CURRENT_BRANCH not in stack.stack:
         die("Current branch {} is not in a stack", CURRENT_BRANCH)
-    
+
     b = stack.stack[CURRENT_BRANCH]
-    
+
     if not b.parent:
         die("Cannot fold stack bottom branch {}", CURRENT_BRANCH)
-    
+
     if b.parent.name in STACK_BOTTOMS:
         die("Cannot fold into stack bottom branch {}", b.parent.name)
-    
+
     if not b.is_synced_with_parent():
         die(
             "Branch {} is not synced with parent {}, sync before folding",
             b.name,
             b.parent.name,
         )
-    
+
     # Get commits to be applied
     commits_to_apply = get_commits_between(b.parent_commit, b.commit)
     if not commits_to_apply:
         info("No commits to fold from {} into {}", b.name, b.parent.name)
     else:
         cout("Folding {} commits from {} into {}\n", len(commits_to_apply), b.name, b.parent.name, fg="green")
-    
+
     # Get children that need to be reparented
     children = list(b.children)
     if children:
         cout("Reparenting {} children to {}\n", len(children), b.parent.name, fg="yellow")
         for child in children:
             cout("  {} -> {}\n", child.name, b.parent.name, fg="gray")
-    
+
     # Switch to parent branch
     checkout(b.parent.name)
     CURRENT_BRANCH = b.parent.name
-    
+
     # Choose between merge and cherry-pick based on config
     if get_config().use_merge:
         # Merge approach: merge the child branch into parent
@@ -2529,15 +2529,15 @@ def cmd_fold(stack: StackBranchSet, args):
         else:
             # No commits to apply, just finish the fold operation
             finish_fold_operation(stack, b.name, b.parent.name, [child.name for child in children])
-    
+
     return  # Early return since both paths handle completion
 
 
-def inner_do_merge_fold(stack: StackBranchSet, fold_branch_name: BranchName, parent_branch_name: BranchName, 
+def inner_do_merge_fold(stack: StackBranchSet, fold_branch_name: BranchName, parent_branch_name: BranchName,
                         children_names: List[BranchName]):
     """Perform merge-based fold operation with state management"""
     print()
-    
+
     # Save state for potential continuation
     with open(TMP_STATE_FILE, "w") as f:
         json.dump({
@@ -2549,33 +2549,33 @@ def inner_do_merge_fold(stack: StackBranchSet, fold_branch_name: BranchName, par
             }
         }, f)
     os.replace(TMP_STATE_FILE, STATE_FILE)  # make the write atomic
-    
+
     cout("Merging {} into {}\n", fold_branch_name, parent_branch_name, fg="green")
     result = run(CmdArgs(["git", "merge", fold_branch_name]), check=False)
     if result is None:
         die("Merge failed for branch {}. Please resolve conflicts and run `stacky continue`", fold_branch_name)
-    
+
     # Merge successful, complete the fold operation
     finish_merge_fold_operation(stack, fold_branch_name, parent_branch_name, children_names)
 
 
-def finish_merge_fold_operation(stack: StackBranchSet, fold_branch_name: BranchName, 
+def finish_merge_fold_operation(stack: StackBranchSet, fold_branch_name: BranchName,
                                 parent_branch_name: BranchName, children_names: List[BranchName]):
     """Complete the merge-based fold operation after merge is successful"""
     global CURRENT_BRANCH
-    
+
     # Get the updated branches from the stack
     fold_branch = stack.stack.get(fold_branch_name)
     parent_branch = stack.stack[parent_branch_name]
-    
+
     if not fold_branch:
         # Branch might have been deleted already, just finish up
         cout("✓ Merge fold operation completed\n", fg="green")
         return
-    
+
     # Update parent branch commit in stack
     parent_branch.commit = get_commit(parent_branch_name)
-    
+
     # Reparent children
     for child_name in children_names:
         if child_name in stack.stack:
@@ -2588,33 +2588,33 @@ def finish_merge_fold_operation(stack: StackBranchSet, fold_branch_name: BranchN
             # Update the child's parent commit to the new parent's tip
             set_parent_commit(child.name, parent_branch.commit, child.parent_commit)
             child.parent_commit = parent_branch.commit
-    
+
     # Remove the folded branch from its parent's children
     parent_branch.children.discard(fold_branch)
-    
+
     # Delete the branch
     info("Deleting branch {}", fold_branch.name)
     run(CmdArgs(["git", "branch", "-D", fold_branch.name]))
-    
+
     # Clean up stack parent ref
     run(CmdArgs(["git", "update-ref", "-d", "refs/stack-parent/{}".format(fold_branch.name)]))
-    
+
     # Remove from stack
     stack.remove(fold_branch.name)
-    
+
     cout("✓ Successfully merged and folded {} into {}\n", fold_branch.name, parent_branch.name, fg="green")
 
 
-def inner_do_fold(stack: StackBranchSet, fold_branch_name: BranchName, parent_branch_name: BranchName, 
+def inner_do_fold(stack: StackBranchSet, fold_branch_name: BranchName, parent_branch_name: BranchName,
                   commits_to_apply: List[str], children_names: List[BranchName], allow_empty: bool):
     """Continue folding operation from saved state"""
     print()
-    
+
     # If no commits to apply, skip cherry-picking and go straight to cleanup
     if not commits_to_apply:
         finish_fold_operation(stack, fold_branch_name, parent_branch_name, children_names)
         return
-    
+
     while commits_to_apply:
         with open(TMP_STATE_FILE, "w") as f:
             json.dump({
@@ -2630,16 +2630,16 @@ def inner_do_fold(stack: StackBranchSet, fold_branch_name: BranchName, parent_br
         os.replace(TMP_STATE_FILE, STATE_FILE)  # make the write atomic
 
         commit = commits_to_apply.pop()
-        
+
         # Check if this commit would be empty by doing a dry-run cherry-pick
         dry_run_result = run(CmdArgs(["git", "cherry-pick", "--no-commit", commit]), check=False)
         if dry_run_result is not None:
             # Check if there are any changes staged
             has_changes = run(CmdArgs(["git", "diff", "--cached", "--quiet"]), check=False) is None
-            
+
             # Reset the working directory and index since we only wanted to test
             run(CmdArgs(["git", "reset", "--hard", "HEAD"]))
-            
+
             if not has_changes:
                 cout("Skipping empty commit {}\n", commit[:8], fg="yellow")
                 continue
@@ -2647,7 +2647,7 @@ def inner_do_fold(stack: StackBranchSet, fold_branch_name: BranchName, parent_br
             # Cherry-pick failed during dry run, reset and try normal cherry-pick
             # This could happen due to conflicts, so we'll let the normal cherry-pick handle it
             run(CmdArgs(["git", "reset", "--hard", "HEAD"]), check=False)
-        
+
         cout("Cherry-picking commit {}\n", commit[:8], fg="green")
         cherry_pick_cmd = ["git", "cherry-pick"]
         if allow_empty:
@@ -2656,28 +2656,28 @@ def inner_do_fold(stack: StackBranchSet, fold_branch_name: BranchName, parent_br
         result = run(CmdArgs(cherry_pick_cmd), check=False)
         if result is None:
             die("Cherry-pick failed for commit {}. Please resolve conflicts and run `stacky continue`", commit)
-    
+
     # All commits applied successfully, now finish the fold operation
     finish_fold_operation(stack, fold_branch_name, parent_branch_name, children_names)
 
 
-def finish_fold_operation(stack: StackBranchSet, fold_branch_name: BranchName, 
+def finish_fold_operation(stack: StackBranchSet, fold_branch_name: BranchName,
                          parent_branch_name: BranchName, children_names: List[BranchName]):
     """Complete the fold operation after all commits are applied"""
     global CURRENT_BRANCH
-    
+
     # Get the updated branches from the stack
     fold_branch = stack.stack.get(fold_branch_name)
     parent_branch = stack.stack[parent_branch_name]
-    
+
     if not fold_branch:
         # Branch might have been deleted already, just finish up
         cout("✓ Fold operation completed\n", fg="green")
         return
-    
+
     # Update parent branch commit in stack
     parent_branch.commit = get_commit(parent_branch_name)
-    
+
     # Reparent children
     for child_name in children_names:
         if child_name in stack.stack:
@@ -2690,20 +2690,20 @@ def finish_fold_operation(stack: StackBranchSet, fold_branch_name: BranchName,
             # Update the child's parent commit to the new parent's tip
             set_parent_commit(child.name, parent_branch.commit, child.parent_commit)
             child.parent_commit = parent_branch.commit
-    
+
     # Remove the folded branch from its parent's children
     parent_branch.children.discard(fold_branch)
-    
+
     # Delete the branch
     info("Deleting branch {}", fold_branch.name)
     run(CmdArgs(["git", "branch", "-D", fold_branch.name]))
-    
+
     # Clean up stack parent ref
     run(CmdArgs(["git", "update-ref", "-d", "refs/stack-parent/{}".format(fold_branch.name)]))
-    
+
     # Remove from stack
     stack.remove(fold_branch.name)
-    
+
     cout("✓ Successfully folded {} into {}\n", fold_branch.name, parent_branch.name, fg="green")
 
 
