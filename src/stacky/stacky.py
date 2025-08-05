@@ -1036,8 +1036,19 @@ def extract_stack_comment(body: str) -> str:
     return ""
 
 
-def add_or_update_stack_comment(branch: StackBranch, forest: BranchesTreeForest):
-    """Add or update stack comment in PR body"""
+def get_complete_stack_forest_for_branch(branch: StackBranch) -> BranchesTreeForest:
+    """Get the complete stack forest containing the given branch"""
+    # Find the root of the stack
+    root = branch
+    while root.parent and root.parent.name not in STACK_BOTTOMS:
+        root = root.parent
+    
+    # Create a forest with just this root's complete tree
+    return BranchesTreeForest([make_tree(root)])
+
+
+def add_or_update_stack_comment(branch: StackBranch, complete_forest: BranchesTreeForest):
+    """Add or update stack comment in PR body using a pre-computed complete forest"""
     if not branch.open_pr_info:
         return
 
@@ -1054,7 +1065,7 @@ def add_or_update_stack_comment(branch: StackBranch, forest: BranchesTreeForest)
     )
 
     current_body = pr_data.get("body", "")
-    stack_string = generate_stack_string(forest, branch)
+    stack_string = generate_stack_string(complete_forest, branch)
     
     if not stack_string:
         return
@@ -1086,6 +1097,8 @@ def add_or_update_stack_comment(branch: StackBranch, forest: BranchesTreeForest)
             ]), out=True)
         else:
             cout("✓ Stack comment in PR #{} is already correct\n", pr_number, fg="green")
+
+
 
 
 def do_push(
@@ -1216,9 +1229,34 @@ def do_push(
 
     # Handle stack comments for PRs
     if pr:
-        for b in forest_depth_first(forest):
-            if b.open_pr_info:
-                add_or_update_stack_comment(b, forest)
+        # Reload PR info to include newly created PRs
+        load_pr_info_for_forest(forest)
+        
+        # Get complete forests for all branches with PRs (grouped by stack root)
+        complete_forests_by_root = {}
+        branches_with_prs = [b for b in forest_depth_first(forest) if b.open_pr_info]
+        
+        for b in branches_with_prs:
+            # Find root branch
+            root = b
+            while root.parent and root.parent.name not in STACK_BOTTOMS:
+                root = root.parent
+            
+            root_name = root.name
+            if root_name not in complete_forests_by_root:
+                # Create complete forest for this root and load PR info once
+                complete_forest = get_complete_stack_forest_for_branch(b)
+                load_pr_info_for_forest(complete_forest)
+                complete_forests_by_root[root_name] = complete_forest
+        
+        # Now update stack comments using the cached complete forests
+        for b in branches_with_prs:
+            root = b
+            while root.parent and root.parent.name not in STACK_BOTTOMS:
+                root = root.parent
+            
+            complete_forest = complete_forests_by_root[root.name]
+            add_or_update_stack_comment(b, complete_forest)
 
     stop_muxed_ssh(remote_name)
 
