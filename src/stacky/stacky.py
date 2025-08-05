@@ -110,19 +110,21 @@ class StackyConfig:
     share_ssh_session: bool = False
     use_merge: bool = False
     use_force_push: bool = True
+    compact_pr_display: bool = False
 
     def read_one_config(self, config_path: str):
         rawconfig = configparser.ConfigParser()
         rawconfig.read(config_path)
         if rawconfig.has_section("UI"):
-            self.skip_confirm = bool(rawconfig.get("UI", "skip_confirm", fallback=self.skip_confirm))
-            self.change_to_main = bool(rawconfig.get("UI", "change_to_main", fallback=self.change_to_main))
-            self.change_to_adopted = bool(rawconfig.get("UI", "change_to_adopted", fallback=self.change_to_adopted))
-            self.share_ssh_session = bool(rawconfig.get("UI", "share_ssh_session", fallback=self.share_ssh_session))
+            self.skip_confirm = rawconfig.getboolean("UI", "skip_confirm", fallback=self.skip_confirm)
+            self.change_to_main = rawconfig.getboolean("UI", "change_to_main", fallback=self.change_to_main)
+            self.change_to_adopted = rawconfig.getboolean("UI", "change_to_adopted", fallback=self.change_to_adopted)
+            self.share_ssh_session = rawconfig.getboolean("UI", "share_ssh_session", fallback=self.share_ssh_session)
+            self.compact_pr_display = rawconfig.getboolean("UI", "compact_pr_display", fallback=self.compact_pr_display)
 
         if rawconfig.has_section("GIT"):
-            self.use_merge = bool(rawconfig.get("GIT", "use_merge", fallback=self.use_merge))
-            self.use_force_push = bool(rawconfig.get("GIT", "use_force_push", fallback=self.use_force_push))
+            self.use_merge = rawconfig.getboolean("GIT", "use_merge", fallback=self.use_merge)
+            self.use_force_push = rawconfig.getboolean("GIT", "use_force_push", fallback=self.use_force_push)
 
 
 CONFIG: Optional[StackyConfig] = None
@@ -583,6 +585,28 @@ def make_tree(b: StackBranch) -> BranchesTree:
     return BranchesTree(dict([make_tree_node(b)]))
 
 
+def get_pr_status_emoji(pr_info) -> str:
+    """Get the status emoji for a PR based on review state"""
+    if not pr_info:
+        return ""
+    
+    review_decision = pr_info.get('reviewDecision')
+    review_requests = pr_info.get('reviewRequests', [])
+    is_draft = pr_info.get('isDraft', False)
+    
+    if is_draft:
+        # Draft PRs are waiting on author
+        return " 🚧"
+    elif review_decision == "APPROVED":
+        return " ✅"
+    elif review_requests and len(review_requests) > 0:
+        # Has pending review requests - waiting on review
+        return " 🔄"
+    else:
+        # No pending review requests, likely needs changes or author action
+        return " ❌"
+
+
 def format_name(b: StackBranch, *, colorize: bool) -> str:
     prefix = ""
     severity = 0
@@ -602,9 +626,18 @@ def format_name(b: StackBranch, *, colorize: bool) -> str:
     suffix = ""
     if b.open_pr_info:
         suffix += " "
-        suffix += fmt("(#{})", b.open_pr_info["number"], color=colorize, fg="blue")
-        suffix += " "
-        suffix += fmt("{}", b.open_pr_info["title"], color=colorize, fg="blue")
+        # Make the PR info a clickable link
+        pr_url = b.open_pr_info["url"]
+        pr_number = b.open_pr_info["number"]
+        status_emoji = get_pr_status_emoji(b.open_pr_info)
+        
+        if get_config().compact_pr_display:
+            # Compact: just number and emoji
+            suffix += fmt("(\033]8;;{}\033\\#{}{}\033]8;;\033\\)", pr_url, pr_number, status_emoji, color=colorize, fg="blue")
+        else:
+            # Full: number, emoji, and title
+            pr_title = b.open_pr_info["title"]
+            suffix += fmt("(\033]8;;{}\033\\#{}{} {}\033]8;;\033\\)", pr_url, pr_number, status_emoji, pr_title, color=colorize, fg="blue")
     return prefix + fmt("{}", b.name, color=colorize, fg=fg) + suffix
 
 
@@ -991,23 +1024,7 @@ def generate_stack_string(forest: BranchesTreeForest, current_branch: StackBranc
             pr_number = b.open_pr_info['number']
             
             # Add approval status emoji using same logic as stacky inbox
-            review_decision = b.open_pr_info.get('reviewDecision')
-            review_requests = b.open_pr_info.get('reviewRequests', [])
-            is_draft = b.open_pr_info.get('isDraft', False)
-            
-            status_emoji = ""
-            if is_draft:
-                # Draft PRs are waiting on author
-                status_emoji = " 🚧"
-            elif review_decision == "APPROVED":
-                status_emoji = " ✅"
-            elif review_requests and len(review_requests) > 0:
-                # Has pending review requests - waiting on review
-                status_emoji = " 🔄"
-            else:
-                # No pending review requests, likely needs changes or author action
-                status_emoji = " ❌"
-            
+            status_emoji = get_pr_status_emoji(b.open_pr_info)
             pr_info = f" (#{pr_number}{status_emoji})"
         
         # Add arrow indicator for current branch (the one this PR represents)

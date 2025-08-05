@@ -219,6 +219,7 @@ List of parameters for each sections:
  * change_to_main: boolean with a default value of `False`, by default `stacky` will stop doing action is you are not in a valid stack (ie. a branch that was created or adopted by stacky), when set to `True` `stacky` will first change to `main` or `master` *when* the current branch is not a valid stack.
  * change_to_adopted: boolean with a default value of `False`, when set to `True` `stacky` will change the current branch to the adopted one.
  * share_ssh_session: boolean with a default value of `False`, when set to `True` `stacky` will create a shared `ssh` session to the `github.com` server. This is useful when you are pushing a stack of diff and you have some kind of 2FA on your ssh key like the ed25519-sk.
+ * compact_pr_display: boolean with a default value of `False`, when set to `True` `stacky info --pr` will show a compact format displaying only the PR number and status emoji (✅ approved, ❌ changes requested, 🔄 waiting for review, 🚧 draft) without the PR title. Both compact and full formats include clickable links to the PRs.
 
 ### GIT
  * use_merge: boolean with a default value of `False`, when set to `True` `stacky` will use `git merge` instead of `git rebase` for sync operations and `stacky fold` will merge the child branch into the parent instead of cherry-picking individual commits.
