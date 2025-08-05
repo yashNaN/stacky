@@ -331,6 +331,9 @@ def get_pr_info(branch: BranchName, *, full: bool = False) -> PRInfos:
         "title",
         "baseRefName",
         "headRefName",
+        "reviewDecision",
+        "reviewRequests",
+        "isDraft",
     ]
     if full:
         fields += ["commits"]
@@ -985,7 +988,27 @@ def generate_stack_string(forest: BranchesTreeForest, current_branch: StackBranc
         indent = "  " * depth
         pr_info = ""
         if b.open_pr_info:
-            pr_info = f" (#{b.open_pr_info['number']})"
+            pr_number = b.open_pr_info['number']
+            
+            # Add approval status emoji using same logic as stacky inbox
+            review_decision = b.open_pr_info.get('reviewDecision')
+            review_requests = b.open_pr_info.get('reviewRequests', [])
+            is_draft = b.open_pr_info.get('isDraft', False)
+            
+            status_emoji = ""
+            if is_draft:
+                # Draft PRs are waiting on author
+                status_emoji = " 🚧"
+            elif review_decision == "APPROVED":
+                status_emoji = " ✅"
+            elif review_requests and len(review_requests) > 0:
+                # Has pending review requests - waiting on review
+                status_emoji = " 🔄"
+            else:
+                # No pending review requests, likely needs changes or author action
+                status_emoji = " ❌"
+            
+            pr_info = f" (#{pr_number}{status_emoji})"
         
         # Add arrow indicator for current branch (the one this PR represents)
         current_indicator = " ← (CURRENT PR)" if b.name == current_branch.name else ""
