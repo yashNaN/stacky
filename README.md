@@ -225,6 +225,35 @@ List of parameters for each sections:
  * use_merge: boolean with a default value of `False`, when set to `True` `stacky` will use `git merge` instead of `git rebase` for sync operations and `stacky fold` will merge the child branch into the parent instead of cherry-picking individual commits.
  * use_force_push: boolean with a default value of `True`, controls whether `stacky` can use force push when pushing branches.
 
+### Example Configuration
+
+Here's a complete example of a `.stackyconfig` file with all available options:
+
+```ini
+[UI]
+# Skip confirmation prompts (useful for automation)
+skip_confirm = False
+
+# Automatically change to main/master when not in a valid stack  
+change_to_main = False
+
+# Change to the adopted branch after running 'stacky adopt'
+change_to_adopted = False
+
+# Create shared SSH session for multiple operations (helpful with 2FA)
+share_ssh_session = False
+
+# Show compact format for 'stacky info --pr' (just number and emoji)
+compact_pr_display = False
+
+[GIT]
+# Use git merge instead of rebase for sync operations
+use_merge = False
+
+# Allow force push when pushing branches
+use_force_push = True
+```
+
 ## License
 
 - [MIT License](https://github.com/rockset/stacky/blob/master/LICENSE.txt)
