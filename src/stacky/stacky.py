@@ -111,6 +111,7 @@ class StackyConfig:
     use_merge: bool = False
     use_force_push: bool = True
     compact_pr_display: bool = False
+    enable_stack_comment: bool = True
 
     def read_one_config(self, config_path: str):
         rawconfig = configparser.ConfigParser()
@@ -121,6 +122,7 @@ class StackyConfig:
             self.change_to_adopted = rawconfig.getboolean("UI", "change_to_adopted", fallback=self.change_to_adopted)
             self.share_ssh_session = rawconfig.getboolean("UI", "share_ssh_session", fallback=self.share_ssh_session)
             self.compact_pr_display = rawconfig.getboolean("UI", "compact_pr_display", fallback=self.compact_pr_display)
+            self.enable_stack_comment = rawconfig.getboolean("UI", "enable_stack_comment", fallback=self.enable_stack_comment)
 
         if rawconfig.has_section("GIT"):
             self.use_merge = rawconfig.getboolean("GIT", "use_merge", fallback=self.use_merge)
@@ -1236,16 +1238,12 @@ def do_push(
             # To do so we need to pickup the current commit of the branch, the branch name, the
             # parent branch and it's parent commit and call .git/hooks/pre-push
             cout("Pushing {}\n", b.name, fg="green")
+            cmd_args = ["git", "push"]
+            if get_config().use_force_push:
+                cmd_args.append("-f")
+            cmd_args.extend([b.remote, "{}:{}".format(b.name, b.remote_branch)])
             run(
-                CmdArgs(
-                    [
-                        "git",
-                        "push",
-                        "-f" if get_config().use_force_push else "",
-                        b.remote,
-                        "{}:{}".format(b.name, b.remote_branch),
-                    ]
-                ),
+                CmdArgs(cmd_args),
                 out=True,
             )
         if pr_action == PR_FIX_BASE:
@@ -1268,7 +1266,7 @@ def do_push(
             create_gh_pr(b, prefix)
 
     # Handle stack comments for PRs
-    if pr:
+    if pr and get_config().enable_stack_comment:
         # Reload PR info to include newly created PRs
         load_pr_info_for_forest(forest)
         
