@@ -220,6 +220,7 @@ List of parameters for each sections:
  * change_to_adopted: boolean with a default value of `False`, when set to `True` `stacky` will change the current branch to the adopted one.
  * share_ssh_session: boolean with a default value of `False`, when set to `True` `stacky` will create a shared `ssh` session to the `github.com` server. This is useful when you are pushing a stack of diff and you have some kind of 2FA on your ssh key like the ed25519-sk.
  * compact_pr_display: boolean with a default value of `False`, when set to `True` `stacky info --pr` will show a compact format displaying only the PR number and status emoji (✅ approved, ❌ changes requested, 🔄 waiting for review, 🚧 draft) without the PR title. Both compact and full formats include clickable links to the PRs.
+ * enable_stack_comment: boolean with a default value of `True`, when set to `False` `stacky` will not post stack comments to GitHub PRs showing the entire stack structure. Disable this if you don't want automated stack comments in your PR descriptions.
 
 ### GIT
  * use_merge: boolean with a default value of `False`, when set to `True` `stacky` will use `git merge` instead of `git rebase` for sync operations and `stacky fold` will merge the child branch into the parent instead of cherry-picking individual commits.
@@ -245,6 +246,9 @@ share_ssh_session = False
 
 # Show compact format for 'stacky info --pr' (just number and emoji)
 compact_pr_display = False
+
+# Enable posting stack comments to GitHub PRs
+enable_stack_comment = True
 
 [GIT]
 # Use git merge instead of rebase for sync operations
