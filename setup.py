@@ -23,7 +23,7 @@ setup(
     package_dir={"": "src"},
     packages=find_packages(where="src"),
     python_requires=">=3.8, <4",
-    install_requires=["asciitree", "ansicolors", "simple-term-menu"],
+    install_requires=["asciitree", "ansicolors", "simple-term-menu", "argcomplete"],
     entry_points={
         "console_scripts": [
             "stacky=stacky:main",
