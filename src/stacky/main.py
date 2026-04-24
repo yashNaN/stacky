@@ -9,8 +9,8 @@ from argparse import ArgumentParser
 import argcomplete  # type: ignore
 
 from stacky.git.branch import (
-    branch_name_completer, get_current_branch_name, get_real_stack_bottom,
-    init_git, set_current_branch
+    branch_name_completer, check_gh_auth, get_current_branch_name,
+    get_real_stack_bottom, init_git, set_current_branch
 )
 from stacky.stack.models import StackBranchSet
 from stacky.stack.operations import inner_do_sync, load_all_stacks, load_stack_for_given_branch
@@ -104,9 +104,13 @@ def main():
         logging.basicConfig(format=_LOGGING_FORMAT, level=LOGLEVELS[args.log_level], force=True)
         set_color_mode(args.color)
 
-        init_git()
+        from stacky.git.snapshot import load_snapshot
+        snapshot = load_snapshot()
+        init_git(snapshot)
+        if _needs_gh(args):
+            check_gh_auth()
         stack = StackBranchSet()
-        load_all_stacks(stack)
+        load_all_stacks(stack, snapshot)
 
         current_branch = get_current_branch_name()
         if args.command == "continue":
@@ -132,6 +136,16 @@ def main():
     except ExitException as e:
         error("{}", e.args[0])
         sys.exit(1)
+
+
+def _needs_gh(args) -> bool:
+    """Whether this invocation will shell out to `gh`.
+
+    Commands that always use `gh` set `needs_gh=True` via set_defaults on
+    their subparser. Commands where `gh` is toggled by `--pr` / `--no-pr`
+    are handled by checking `args.pr` here — no subparser flag needed.
+    """
+    return getattr(args, "needs_gh", False) or getattr(args, "pr", False)
 
 
 def _handle_continue(stack: StackBranchSet, current_branch: BranchName):
@@ -274,13 +288,13 @@ def _setup_other_commands(subparsers):
     # update
     update_parser = subparsers.add_parser("update", help="Update repo, all bottom branches must exist in remote")
     update_parser.add_argument("--force", "-f", action="store_true", help="Bypass confirmation")
-    update_parser.set_defaults(func=cmd_update)
+    update_parser.set_defaults(func=cmd_update, needs_gh=True)
 
     # import
     import_parser = subparsers.add_parser("import", help="Import Graphite stack")
     import_parser.add_argument("--force", "-f", action="store_true", help="Bypass confirmation")
     import_parser.add_argument("name", help="Foreign stack top").completer = branch_name_completer
-    import_parser.set_defaults(func=cmd_import)
+    import_parser.set_defaults(func=cmd_import, needs_gh=True)
 
     # adopt
     adopt_parser = subparsers.add_parser("adopt", help="Adopt one branch")
@@ -291,7 +305,7 @@ def _setup_other_commands(subparsers):
     land_parser = subparsers.add_parser("land", help="Land bottom-most PR on current stack")
     land_parser.add_argument("--force", "-f", action="store_true", help="Bypass confirmation")
     land_parser.add_argument("--auto", "-a", action="store_true", help="Automatically merge after all checks pass")
-    land_parser.set_defaults(func=cmd_land)
+    land_parser.set_defaults(func=cmd_land, needs_gh=True)
 
     # shortcuts
     push_parser = subparsers.add_parser("push", help="Alias for downstack push")
@@ -312,11 +326,11 @@ def _setup_other_commands(subparsers):
     # inbox
     inbox_parser = subparsers.add_parser("inbox", help="List all active GitHub pull requests for the current user")
     inbox_parser.add_argument("--compact", "-c", action="store_true", help="Show compact view")
-    inbox_parser.set_defaults(func=cmd_inbox)
+    inbox_parser.set_defaults(func=cmd_inbox, needs_gh=True)
 
     # prs
     prs_parser = subparsers.add_parser("prs", help="Interactive PR management - select and edit PR descriptions")
-    prs_parser.set_defaults(func=cmd_prs)
+    prs_parser.set_defaults(func=cmd_prs, needs_gh=True)
 
     # fold
     fold_parser = subparsers.add_parser("fold", help="Fold current branch into parent branch and delete current branch")
