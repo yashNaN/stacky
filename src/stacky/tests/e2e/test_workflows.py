@@ -7,6 +7,8 @@ trace back to the production code being verified.
 """
 from __future__ import annotations
 
+import pytest
+
 from stacky.tests.e2e.helpers import (
     current_branch,
     head,
@@ -139,3 +141,120 @@ def test_init_git_fails_without_gh(toy_repo_no_gh):
     result = toy_repo_no_gh.run_stacky("info")
     assert result.returncode != 0
     assert "gh" in (result.stdout + result.stderr).lower()
+
+
+def _build_stack(toy_repo, names):
+    """Build a linear stack master -> names[0] -> names[1] -> ... with a
+    distinct file committed on each branch. Leaves the working tree on the
+    topmost branch.
+    """
+    for name in names:
+        toy_repo.run_stacky("branch", "new", name, check=True)
+        toy_repo.add_file(f"{name}_file", f"{name}\n")
+        toy_repo.run_stacky("commit", "-m", f"{name} commit", check=True)
+
+
+def test_upstack_onto_reparents_branch(toy_repo):
+    """`stacky upstack onto master` moves a mid-stack branch (and its upstack)
+    to sit on master directly. Exercises cmd_upstack_onto in
+    src/stacky/commands/upstack.py:39.
+    """
+    _build_stack(toy_repo, ["A", "B", "C"])
+    # master -> A -> B -> C, now on C.
+
+    toy_repo.git("checkout", "B")
+    result = toy_repo.run_stacky("upstack", "onto", "master", check=True)
+    assert result.returncode == 0, result.stderr
+
+    # B's parent is now master; C's parent is still B (it moved with B).
+    assert merge_config(toy_repo, "B") == "refs/heads/master"
+    assert merge_config(toy_repo, "C") == "refs/heads/B"
+    # B's recorded parent-commit matches master's HEAD.
+    assert stack_parent_ref(toy_repo, "B") == head(toy_repo, "master")
+    # After the re-sync C's parent-commit matches B's new head.
+    assert stack_parent_ref(toy_repo, "C") == head(toy_repo, "B")
+    # A is untouched and still rooted on master.
+    assert merge_config(toy_repo, "A") == "refs/heads/master"
+
+
+def test_upstack_as_bottom_promotes_branch(toy_repo):
+    """`stacky upstack as bottom` promotes the current branch to a new stack
+    bottom. Exercises cmd_upstack_as_base in src/stacky/commands/upstack.py:55.
+    """
+    _build_stack(toy_repo, ["A", "B"])
+    toy_repo.git("checkout", "B")
+
+    result = toy_repo.run_stacky("upstack", "as", "bottom", check=True)
+    assert result.returncode == 0, result.stderr
+
+    # Sentinel ref marks B as a custom stack bottom.
+    bottom_ref = toy_repo.git("rev-parse", "refs/stacky-bottom-branch/B")
+    assert bottom_ref == head(toy_repo, "B")
+    # set_parent(B, None) points merge at itself.
+    assert merge_config(toy_repo, "B") == "refs/heads/B"
+    # And the old stack-parent ref is gone.
+    assert stack_parent_ref(toy_repo, "B") is None
+    # A is unchanged.
+    assert merge_config(toy_repo, "A") == "refs/heads/master"
+
+
+def test_fold_then_upstack_onto(toy_repo):
+    """Fold B into A, then re-parent C (formerly above B) with upstack onto.
+
+    Verifies that the reparenting fold does inside finish_fold_operation
+    cooperates correctly with a follow-up upstack onto.
+    """
+    _build_stack(toy_repo, ["A", "B", "C"])
+    # master -> A -> B -> C, currently on C.
+
+    # Fold B into A. C gets reparented onto A, B is deleted.
+    toy_repo.git("checkout", "B")
+    toy_repo.run_stacky("fold", check=True)
+
+    assert "B" not in list_branches(toy_repo)
+    assert merge_config(toy_repo, "C") == "refs/heads/A"
+    # A now carries its own + B's files.
+    a_tree = toy_repo.git("ls-tree", "--name-only", "A").split("\n")
+    assert "A_file" in a_tree
+    assert "B_file" in a_tree
+
+    # Now lift C off A and put it directly on master.
+    toy_repo.git("checkout", "C")
+    toy_repo.run_stacky("upstack", "onto", "master", check=True)
+
+    assert merge_config(toy_repo, "C") == "refs/heads/master"
+    assert stack_parent_ref(toy_repo, "C") == head(toy_repo, "master")
+    # A still exists with the folded contents.
+    assert "A" in list_branches(toy_repo)
+
+
+def test_amend_updates_last_commit(toy_repo):
+    """`stacky amend` folds staged changes into the previous commit.
+
+    Rebase-only: stacky refuses to amend under use_merge
+    (src/stacky/commands/commit.py:27).
+    """
+    if toy_repo.use_merge:
+        pytest.skip("stacky amend is not supported with use_merge=True")
+
+    toy_repo.run_stacky("branch", "new", "A", check=True)
+    toy_repo.add_file("a", "a\n")
+    toy_repo.run_stacky("commit", "-m", "A commit", check=True)
+    first_head = head(toy_repo, "A")
+
+    # Stage a new change and amend it into the previous commit.
+    toy_repo.add_file("a_extra", "extra\n")
+    result = toy_repo.run_stacky("amend", check=True)
+    assert result.returncode == 0, result.stderr
+
+    new_head = head(toy_repo, "A")
+    assert new_head != first_head, "amend should rewrite the commit"
+    # Both files are present in the single commit above master.
+    tree = toy_repo.git("ls-tree", "--name-only", "A").split("\n")
+    assert "a" in tree
+    assert "a_extra" in tree
+    # Exactly one commit above master — confirms amend didn't just add a new one.
+    log = [
+        l for l in toy_repo.git("log", "--format=%H", "master..A").split("\n") if l
+    ]
+    assert len(log) == 1, f"expected 1 commit above master, got {log}"

@@ -26,6 +26,7 @@ class RunResult:
 class ToyRepo:
     path: Path
     gh_dir: Optional[Path]  # None = strip any real `gh` from PATH for negative tests.
+    use_merge: bool = False  # Reflects the .stackyconfig written by the fixture.
 
     def _env(self) -> dict:
         env = dict(os.environ)

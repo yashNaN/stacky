@@ -55,15 +55,30 @@ def _init_repo(path: Path) -> None:
     )
 
 
+@pytest.fixture(params=["rebase", "merge"], ids=["rebase", "merge"])
+def stacky_mode(request) -> str:
+    """Parametrize tests across use_merge=False (rebase) and use_merge=True."""
+    return request.param
+
+
 @pytest.fixture
-def toy_repo(tmp_path, fake_gh_dir) -> ToyRepo:
-    """A throwaway git repo with master @ seed commit, stacky-ready."""
+def toy_repo(tmp_path, fake_gh_dir, stacky_mode) -> ToyRepo:
+    """A throwaway git repo with master @ seed commit, stacky-ready.
+
+    Runs twice per test via stacky_mode: once with use_merge=False (rebase),
+    once with use_merge=True. The fixture writes the appropriate
+    .stackyconfig and exposes the mode via ToyRepo.use_merge so tests can
+    skip themselves when needed (e.g. amend is rebase-only).
+    """
     repo_path = tmp_path / "repo"
     repo_path.mkdir()
     _init_repo(repo_path)
-    # skip_confirm so `stacky` doesn't block on stdin for confirmations.
-    (repo_path / ".stackyconfig").write_text("[UI]\nskip_confirm = True\n")
-    return ToyRepo(path=repo_path, gh_dir=fake_gh_dir)
+    use_merge = stacky_mode == "merge"
+    config = "[UI]\nskip_confirm = True\n"
+    if use_merge:
+        config += "[GIT]\nuse_merge = True\n"
+    (repo_path / ".stackyconfig").write_text(config)
+    return ToyRepo(path=repo_path, gh_dir=fake_gh_dir, use_merge=use_merge)
 
 
 @pytest.fixture
