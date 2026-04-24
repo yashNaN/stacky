@@ -88,17 +88,39 @@ def create_branch(branch: BranchName):
     run(["git", "checkout", "-b", branch, "--track"], out=True)
 
 
-def init_git():
-    """Initialize git state for stacky."""
+def init_git(snapshot=None):
+    """Initialize git state for stacky from a GitSnapshot.
+
+    Takes no subprocesses of its own — the snapshot already ran them in
+    parallel. The `snapshot=None` fallback loads one lazily for callers
+    (tests, scripts) that don't want to thread one through.
+
+    Intentionally does NOT run `gh auth status` — that call makes a GitHub
+    network round-trip and dominated startup time for commands that never
+    touch `gh`. See `check_gh_auth()`; callers only run it when they need
+    `gh`.
+    """
+    from stacky.utils.logging import die
+    if snapshot is None:
+        from stacky.git.snapshot import load_snapshot
+        snapshot = load_snapshot()
+
+    if snapshot.push_default is not None:
+        die("`git config remote.pushDefault` may not be set")
+    if snapshot.current_branch is not None:
+        global CURRENT_BRANCH
+        CURRENT_BRANCH = snapshot.current_branch
+    return snapshot
+
+
+def check_gh_auth():
+    """Verify `gh` is installed and authenticated.
+
+    Only commands that invoke `gh` (push with PRs, land, inbox, prs, update,
+    import, info --pr) need to call this.
+    """
     from stacky.utils.logging import die
 
-    push_default = run(["git", "config", "remote.pushDefault"], check=False)
-    if push_default is not None:
-        die("`git config remote.pushDefault` may not be set")
     auth_status = run(["gh", "auth", "status"], check=False)
     if auth_status is None:
         die("`gh` authentication failed")
-    global CURRENT_BRANCH
-    current = get_current_branch()
-    if current is not None:
-        CURRENT_BRANCH = current

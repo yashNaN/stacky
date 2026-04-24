@@ -1,12 +1,14 @@
 """Stack data models for stacky."""
 
 import dataclasses
-from typing import Dict, List, Optional, TypedDict
+from typing import Dict, List, Optional, Tuple, TypedDict
 
 from stacky.git.refs import get_commit
 from stacky.git.remote import get_remote_info
 from stacky.utils.logging import die
 from stacky.utils.types import BranchName, Commit
+
+RemoteInfo = Tuple[str, BranchName, Optional[Commit]]
 
 
 class PRInfo(TypedDict):
@@ -44,13 +46,18 @@ class StackBranch:
         name: BranchName,
         parent: "StackBranch",
         parent_commit: Commit,
+        *,
+        commit: Optional[Commit] = None,
+        remote_info: Optional[RemoteInfo] = None,
     ):
         self.name = name
         self.parent = parent
         self.parent_commit = parent_commit
         self.children: set["StackBranch"] = set()
-        self.commit = get_commit(name)
-        self.remote, self.remote_branch, self.remote_commit = get_remote_info(name)
+        self.commit = commit if commit is not None else get_commit(name)
+        if remote_info is None:
+            remote_info = get_remote_info(name)
+        self.remote, self.remote_branch, self.remote_commit = remote_info
         self.pr_info: Dict[str, PRInfo] = {}
         self.open_pr_info: Optional[PRInfo] = None
         self._pr_info_loaded = False
@@ -86,26 +93,34 @@ class StackBranchSet:
         self.tops: set[StackBranch] = set()
         self.bottoms: set[StackBranch] = set()
 
-    def add(self, name: BranchName, **kwargs) -> StackBranch:
-        """Add a branch to the stack."""
+    def add(
+        self,
+        name: BranchName,
+        parent: Optional[StackBranch],
+        parent_commit: Optional[Commit],
+        *,
+        commit: Optional[Commit] = None,
+        remote_info: Optional[RemoteInfo] = None,
+    ) -> StackBranch:
+        """Add a branch to the stack, or return the existing entry if present."""
         if name in self.stack:
             s = self.stack[name]
             assert s.name == name
-            for k, v in kwargs.items():
-                if getattr(s, k) != v:
+            for field, new_value in (("parent", parent), ("parent_commit", parent_commit)):
+                if getattr(s, field) != new_value:
                     die(
                         "Mismatched stack: {}: {}={}, expected {}",
-                        name,
-                        k,
-                        getattr(s, k),
-                        v,
+                        name, field, getattr(s, field), new_value,
                     )
-        else:
-            s = StackBranch(name, **kwargs)
-            self.stack[name] = s
-            if s.parent is None:
-                self.bottoms.add(s)
-            self.tops.add(s)
+            return s
+        s = StackBranch(
+            name, parent, parent_commit,
+            commit=commit, remote_info=remote_info,
+        )
+        self.stack[name] = s
+        if s.parent is None:
+            self.bottoms.add(s)
+        self.tops.add(s)
         return s
 
     def addStackBranch(self, s: StackBranch):

@@ -11,7 +11,8 @@ from stacky.git.refs import (
     get_all_stack_bottoms, get_commit, get_commits_between,
     get_stack_parent_commit, set_parent_commit
 )
-from stacky.git.remote import start_muxed_ssh, stop_muxed_ssh
+from stacky.git.remote import start_muxed_ssh, stop_muxed_ssh, validate_local_remote
+from stacky.git.snapshot import GitSnapshot, load_snapshot
 from stacky.stack.models import BranchNCommit, StackBranch, StackBranchSet
 from stacky.stack.tree import (
     forest_depth_first, get_complete_stack_forest_for_branch,
@@ -29,19 +30,35 @@ if TYPE_CHECKING:
     pass
 
 
-def load_all_stack_bottoms():
+def load_all_stack_bottoms(snapshot: Optional[GitSnapshot] = None):
     """Load all custom stack bottoms into STACK_BOTTOMS."""
-    STACK_BOTTOMS.update(get_all_stack_bottoms())
+    if snapshot is not None:
+        STACK_BOTTOMS.update(snapshot.bottoms)
+    else:
+        STACK_BOTTOMS.update(get_all_stack_bottoms())
+
+
+def _parent_from_snapshot(snapshot: GitSnapshot, branch: BranchName) -> Optional[BranchName]:
+    """Mirror of get_stack_parent_branch using the snapshot's branch_merge dict."""
+    p = snapshot.branch_merge.get(branch)
+    if p is None or p == branch:
+        return None
+    return p
 
 
 def load_stack_for_given_branch(
-    stack: StackBranchSet, branch: BranchName, *, check: bool = True
+    stack: StackBranchSet, branch: BranchName, *,
+    check: bool = True, snapshot: Optional[GitSnapshot] = None
 ) -> Tuple[Optional[StackBranch], List[BranchName]]:
     """Load stack for a branch, returns (top_branch, list_of_branches)."""
     branches: List[BranchNCommit] = []
     while branch not in STACK_BOTTOMS:
-        parent = get_stack_parent_branch(branch)
-        parent_commit = get_stack_parent_commit(branch)
+        if snapshot is not None:
+            parent = _parent_from_snapshot(snapshot, branch)
+            parent_commit = snapshot.stack_parent_commit.get(branch)
+        else:
+            parent = get_stack_parent_branch(branch)
+            parent_commit = get_stack_parent_commit(branch)
         branches.append(BranchNCommit(branch, parent_commit))
         if not parent or not parent_commit:
             if check:
@@ -52,10 +69,23 @@ def load_stack_for_given_branch(
     branches.append(BranchNCommit(branch, None))
     top = None
     for b in reversed(branches):
+        commit = None
+        remote_info = None
+        if snapshot is not None:
+            commit = snapshot.head_commit.get(b.branch)
+            if commit is not None:
+                validate_local_remote(b.branch, snapshot.branch_remote.get(b.branch))
+                remote_info = (
+                    snapshot.remote_name,
+                    b.branch,
+                    snapshot.remote_commit.get(b.branch),
+                )
         n = stack.add(
             b.branch,
             parent=top,
             parent_commit=b.parent_commit,
+            commit=commit,
+            remote_info=remote_info,
         )
         if top:
             stack.add_child(top, n)
@@ -64,15 +94,19 @@ def load_stack_for_given_branch(
     return top, [b.branch for b in branches]
 
 
-def load_all_stacks(stack: StackBranchSet) -> Optional[StackBranch]:
+def load_all_stacks(
+    stack: StackBranchSet, snapshot: Optional[GitSnapshot] = None
+) -> Optional[StackBranch]:
     """Load all stacks, return top of current branch's stack."""
-    load_all_stack_bottoms()
-    all_branches = set(get_all_branches())
+    if snapshot is None:
+        snapshot = load_snapshot()
+    load_all_stack_bottoms(snapshot)
+    all_branches = set(snapshot.head_commit.keys())
     current_branch = get_current_branch_name()
     current_branch_top = None
     while all_branches:
         b = all_branches.pop()
-        top, branches = load_stack_for_given_branch(stack, b, check=False)
+        top, branches = load_stack_for_given_branch(stack, b, check=False, snapshot=snapshot)
         all_branches -= set(branches)
         if top is None:
             if len(branches) > 1:

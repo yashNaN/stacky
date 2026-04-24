@@ -133,12 +133,25 @@ def test_adopt_untracked_branch(toy_repo):
     assert stack_parent_ref(toy_repo, "sidebar") == master_head
 
 
-def test_init_git_fails_without_gh(toy_repo_no_gh):
-    """Negative: with no fake `gh` on PATH, init_git() dies with an auth error.
+def test_info_succeeds_without_gh(toy_repo_no_gh):
+    """`stacky info` does NOT need `gh` — only commands that actually touch
+    GitHub (push, land, inbox, prs, update, import, info --pr) do.
 
-    Verifies src/stacky/git/branch.py:98 is actually being exercised.
+    Verifies the gh-auth gating in main._needs_gh (src/stacky/main.py).
     """
     result = toy_repo_no_gh.run_stacky("info")
+    assert result.returncode == 0, (
+        f"stacky info should succeed without gh; got stderr:\n{result.stderr}"
+    )
+
+
+def test_inbox_fails_without_gh(toy_repo_no_gh):
+    """Negative: a command that needs `gh` dies when `gh` is missing.
+
+    Verifies check_gh_auth is still wired up for gh-using commands
+    (src/stacky/git/branch.py check_gh_auth).
+    """
+    result = toy_repo_no_gh.run_stacky("inbox")
     assert result.returncode != 0
     assert "gh" in (result.stdout + result.stderr).lower()
 

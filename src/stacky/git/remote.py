@@ -12,12 +12,24 @@ from stacky.utils.shell import run, run_always_return
 from stacky.utils.types import BranchName, CmdArgs, Commit, MAX_SSH_MUX_LIFETIME, STACK_BOTTOMS
 
 
+def validate_local_remote(branch: BranchName, remote_config: Optional[str]):
+    """Die if a non-bottom branch's tracking remote isn't the local sentinel `.`.
+
+    stacky records stack parents via `branch.<X>.remote = "."` (local) plus
+    `branch.<X>.merge = refs/heads/<parent>`. Any other value means the
+    branch was configured by something other than stacky.
+    """
+    if branch in STACK_BOTTOMS:
+        return
+    if remote_config != ".":
+        die("Misconfigured branch {}: remote {}", branch, remote_config)
+
+
 def get_remote_info(branch: BranchName) -> Tuple[str, BranchName, Optional[Commit]]:
     """Get remote info for a branch: (remote, remote_branch, remote_branch_commit)."""
     if branch not in STACK_BOTTOMS:
-        remote = run(CmdArgs(["git", "config", "branch.{}.remote".format(branch)]), check=False)
-        if remote != ".":
-            die("Misconfigured branch {}: remote {}", branch, remote)
+        remote_config = run(CmdArgs(["git", "config", "branch.{}.remote".format(branch)]), check=False)
+        validate_local_remote(branch, remote_config)
 
     # TODO(tudor): Maybe add a way to change these.
     remote = "origin"
