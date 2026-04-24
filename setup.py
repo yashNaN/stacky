@@ -24,6 +24,9 @@ setup(
     packages=find_packages(where="src"),
     python_requires=">=3.8, <4",
     install_requires=["asciitree", "ansicolors", "simple-term-menu", "argcomplete"],
+    extras_require={
+        "dev": ["pytest"],
+    },
     entry_points={
         "console_scripts": [
             "stacky=stacky:main",
