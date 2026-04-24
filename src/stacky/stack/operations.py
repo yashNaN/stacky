@@ -242,7 +242,7 @@ def do_push(
             cout("Pushing {}\n", b.name, fg="green")
             cmd_args = ["git", "push"]
             if get_config().use_force_push:
-                cmd_args.append("-f")
+                cmd_args.append("--force-with-lease")
             cmd_args.extend([b.remote, "{}:{}".format(b.name, b.remote_branch)])
             run(CmdArgs(cmd_args), out=True)
         if pr_action == PR_FIX_BASE:
