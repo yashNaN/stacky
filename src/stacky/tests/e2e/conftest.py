@@ -89,3 +89,42 @@ def toy_repo_no_gh(tmp_path) -> ToyRepo:
     _init_repo(repo_path)
     (repo_path / ".stackyconfig").write_text("[UI]\nskip_confirm = True\n")
     return ToyRepo(path=repo_path, gh_dir=None)
+
+
+def _write_stackyconfig(repo_path: Path, ui: dict, git: dict) -> None:
+    """Write a .stackyconfig from two section dicts."""
+    lines = []
+    if ui:
+        lines.append("[UI]")
+        for k, v in ui.items():
+            lines.append(f"{k} = {v}")
+    if git:
+        lines.append("[GIT]")
+        for k, v in git.items():
+            lines.append(f"{k} = {v}")
+    (repo_path / ".stackyconfig").write_text("\n".join(lines) + "\n")
+
+
+@pytest.fixture
+def toy_repo_with_config(tmp_path, fake_gh_dir):
+    """Factory fixture: returns a callable that creates a ToyRepo with a
+    caller-supplied .stackyconfig. Use for tests that toggle non-default
+    config flags (change_to_main, change_to_adopted, use_force_push=False,
+    etc.) without being tied to the rebase/merge parametrization.
+
+    Example:
+        def test_X(toy_repo_with_config):
+            repo = toy_repo_with_config(ui={"change_to_main": True})
+            ...
+    """
+    def _make(ui: dict = None, git: dict = None) -> ToyRepo:
+        merged_ui = {"skip_confirm": True}
+        if ui:
+            merged_ui.update(ui)
+        repo_path = tmp_path / "repo"
+        repo_path.mkdir()
+        _init_repo(repo_path)
+        _write_stackyconfig(repo_path, merged_ui, git or {})
+        use_merge = bool(git and git.get("use_merge") is True)
+        return ToyRepo(path=repo_path, gh_dir=fake_gh_dir, use_merge=use_merge)
+    return _make

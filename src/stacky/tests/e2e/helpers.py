@@ -41,6 +41,9 @@ class ToyRepo:
         # Turn off any git pager / prompts for determinism.
         env["GIT_PAGER"] = "cat"
         env["GIT_TERMINAL_PROMPT"] = "0"
+        # Avoid editor pops during conflict recovery (`rebase --continue`, etc).
+        env["GIT_EDITOR"] = "true"
+        env["EDITOR"] = "true"
         # Stacky uses this for color decisions; force off so stdout is plain text.
         env["NO_COLOR"] = "1"
         return env
@@ -93,6 +96,16 @@ class ToyRepo:
         """Plain `git add -A && git commit -m ...` — bypasses stacky."""
         self.git("add", "-A")
         self.git("commit", "-m", message)
+
+    def build_stack(self, names) -> None:
+        """Build a linear stack master -> names[0] -> names[1] -> ... with a
+        distinct file committed on each branch via stacky. Leaves the
+        working tree on the topmost branch.
+        """
+        for name in names:
+            self.run_stacky("branch", "new", name, check=True)
+            self.add_file(f"{name}_file", f"{name}\n")
+            self.run_stacky("commit", "-m", f"{name} commit", check=True)
 
 
 def _path_without_gh(path: str) -> str:
@@ -155,3 +168,43 @@ def list_branches(repo: ToyRepo) -> List[str]:
 
 def current_branch(repo: ToyRepo) -> str:
     return repo.git("symbolic-ref", "--short", "HEAD")
+
+
+def run_stacky_expect_fail(repo: ToyRepo, *args: str) -> RunResult:
+    """Run stacky and assert it exits non-zero. Returns the result so the
+    caller can match against stdout/stderr for specific error strings.
+    """
+    result = repo.run_stacky(*args)
+    if result.returncode == 0:
+        raise AssertionError(
+            f"stacky {' '.join(args)} unexpectedly succeeded.\n"
+            f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+        )
+    return result
+
+
+def state_file_path(repo: ToyRepo) -> Path:
+    """Location of stacky's ~/.stacky.state under our HOME override.
+
+    Matches STATE_FILE in src/stacky/utils/types.py:24.
+    """
+    return repo.path.parent / ".stacky.state"
+
+
+def make_conflict(repo: ToyRepo, file: str, branch_a: str, branch_b: str) -> None:
+    """Write conflicting content to `file` on `branch_a` and `branch_b`,
+    committing on each via plain git. Leaves the working tree on branch_b.
+
+    The two branches share a common ancestor (stack parent) but touch the
+    same line of the same file with different contents, so any attempt to
+    rebase or cherry-pick b onto a (or vice versa) conflicts.
+    """
+    repo.git("checkout", branch_a)
+    repo.write_file(file, "version-A\n")
+    repo.git("add", file)
+    repo.git("commit", "-m", f"{branch_a}: {file}")
+
+    repo.git("checkout", branch_b)
+    repo.write_file(file, "version-B\n")
+    repo.git("add", file)
+    repo.git("commit", "-m", f"{branch_b}: {file}")
