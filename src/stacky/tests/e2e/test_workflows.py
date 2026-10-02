@@ -7,6 +7,8 @@ trace back to the production code being verified.
 """
 from __future__ import annotations
 
+import dataclasses
+
 import pytest
 
 from stacky.tests.e2e.helpers import (
@@ -14,6 +16,7 @@ from stacky.tests.e2e.helpers import (
     head,
     list_branches,
     merge_config,
+    run_stacky_expect_fail,
     stack_parent_ref,
 )
 
@@ -188,6 +191,64 @@ def test_upstack_onto_reparents_branch(toy_repo):
     assert stack_parent_ref(toy_repo, "C") == head(toy_repo, "B")
     # A is untouched and still rooted on master.
     assert merge_config(toy_repo, "A") == "refs/heads/master"
+
+
+def test_upstack_onto_adopts_untracked_branch(toy_repo):
+    """`stacky upstack onto master` from a plain git branch adopts it onto
+    master instead of requiring `stacky adopt` from a checkout of master.
+    """
+    toy_repo.git("checkout", "-b", "sidebar")
+    toy_repo.write_file("side", "side\n")
+    toy_repo.commit_all("side commit")
+    master_head = head(toy_repo, "master")
+
+    result = toy_repo.run_stacky("upstack", "onto", "master", check=True)
+    assert result.returncode == 0, result.stderr
+
+    assert current_branch(toy_repo) == "sidebar"
+    assert merge_config(toy_repo, "sidebar") == "refs/heads/master"
+    assert stack_parent_ref(toy_repo, "sidebar") == master_head
+
+
+def test_upstack_onto_adopts_branch_in_linked_worktree(toy_repo, tmp_path):
+    """A branch created by `git worktree add -b` can be adopted from inside
+    the worktree, where master cannot be checked out.
+    """
+    worktree = tmp_path / "linked"
+    toy_repo.git("worktree", "add", "-b", "linked", str(worktree), "master")
+    master_head = head(toy_repo, "master")
+
+    linked = dataclasses.replace(toy_repo, path=worktree)
+    result = linked.run_stacky("upstack", "onto", "master", check=True)
+    assert result.returncode == 0, result.stderr
+
+    assert current_branch(linked) == "linked"
+    assert current_branch(toy_repo) == "master"
+    assert merge_config(toy_repo, "linked") == "refs/heads/master"
+    assert stack_parent_ref(toy_repo, "linked") == master_head
+
+
+def test_upstack_onto_untracked_target_fails(toy_repo):
+    """Adopting requires the target to already be in a stack."""
+    toy_repo.git("branch", "loose")
+    toy_repo.git("checkout", "-b", "sidebar")
+
+    result = run_stacky_expect_fail(toy_repo, "upstack", "onto", "loose")
+    assert "not in a stack" in result.stderr + result.stdout
+    assert merge_config(toy_repo, "sidebar") is None
+
+
+def test_upstack_onto_adopt_requires_stack_bottom_target(toy_repo):
+    """Adopting an untracked branch, like `stacky adopt`, only attaches it to
+    a stack bottom, not to a branch in the middle of a stack.
+    """
+    _build_stack(toy_repo, ["A"])
+    toy_repo.git("checkout", "-b", "sidebar", "master")
+
+    result = run_stacky_expect_fail(toy_repo, "upstack", "onto", "A")
+    assert "must be a valid stack bottom" in result.stderr + result.stdout
+    assert merge_config(toy_repo, "sidebar") is None
+    assert stack_parent_ref(toy_repo, "sidebar") is None
 
 
 def test_upstack_as_bottom_promotes_branch(toy_repo):

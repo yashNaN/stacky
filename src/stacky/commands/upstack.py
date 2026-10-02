@@ -1,7 +1,7 @@
 """Upstack commands - info, push, sync, onto, as."""
 
 from stacky.git.branch import get_current_branch_name
-from stacky.git.refs import set_parent
+from stacky.git.refs import get_commit, get_merge_base, set_parent, set_parent_commit
 from stacky.stack.models import StackBranchSet
 from stacky.stack.operations import do_push, do_sync
 from stacky.stack.tree import (
@@ -10,7 +10,7 @@ from stacky.stack.tree import (
 )
 from stacky.utils.logging import die, info
 from stacky.utils.shell import run
-from stacky.utils.types import CmdArgs
+from stacky.utils.types import CmdArgs, STACK_BOTTOMS
 
 
 def cmd_upstack_info(stack: StackBranchSet, args):
@@ -37,8 +37,15 @@ def cmd_upstack_sync(stack: StackBranchSet, args):
 
 
 def cmd_upstack_onto(stack: StackBranchSet, args):
-    """Move current upstack onto a different parent."""
+    """Move current upstack onto a different parent.
+
+    A branch that is not yet in a stack is adopted onto the target first.
+    """
     current_branch = get_current_branch_name()
+    if args.target not in stack.stack:
+        die("Target branch {} is not in a stack", args.target)
+    if current_branch not in stack.stack:
+        adopt_current_branch_onto(stack, current_branch, stack.stack[args.target])
     b = stack.stack[current_branch]
     if not b.parent:
         die("may not upstack a stack bottom, use stacky adopt")
@@ -50,6 +57,26 @@ def cmd_upstack_onto(stack: StackBranchSet, args):
     b.parent = target
     set_parent(b.name, target.name)
     do_sync(upstack)
+
+
+def adopt_current_branch_onto(stack: StackBranchSet, branch, target) -> None:
+    """Add an untracked branch to the stack as a child of target, which must
+    be a stack bottom, matching `stacky adopt`."""
+    if branch == target.name:
+        die("A branch cannot adopt itself")
+    if target.name not in STACK_BOTTOMS:
+        die(
+            "The target branch {} must be a valid stack bottom: {}",
+            target.name, ", ".join(sorted(STACK_BOTTOMS)),
+        )
+    parent_commit = get_merge_base(target.name, branch)
+    if not parent_commit:
+        die("Branch {} has no merge base with {}", branch, target.name)
+    set_parent(branch, target.name, set_origin=True)
+    set_parent_commit(branch, parent_commit)
+    b = stack.add(branch, parent=target, parent_commit=parent_commit, commit=get_commit(branch))
+    stack.add_child(target, b)
+    info("Adopted {} onto {}", branch, target.name)
 
 
 def cmd_upstack_as_base(stack: StackBranchSet):
