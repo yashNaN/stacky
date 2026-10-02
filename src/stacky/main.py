@@ -119,7 +119,7 @@ def main():
         elif args.command == "recreate":
             args.func(stack, args)
         else:
-            if current_branch not in stack.stack:
+            if current_branch not in stack.stack and not _adopts_current_branch(args):
                 main_branch = get_real_stack_bottom()
                 if get_config().change_to_main and main_branch is not None:
                     run(["git", "checkout", main_branch])
@@ -128,7 +128,8 @@ def main():
                     from stacky.utils.logging import die
                     die("Current branch {} is not in a stack", current_branch)
 
-            get_current_stack_as_forest(stack)
+            if current_branch in stack.stack:
+                get_current_stack_as_forest(stack)
             args.func(stack, args)
 
         # Success, delete the state file
@@ -139,6 +140,11 @@ def main():
     except ExitException as e:
         error("{}", e.args[0])
         sys.exit(1)
+
+
+def _adopts_current_branch(args) -> bool:
+    """Whether this invocation adds an untracked current branch to a stack."""
+    return args.command in ("upstack", "us") and args.upstack_command in ("onto", "restack")
 
 
 def _needs_gh(args) -> bool:
